@@ -1,0 +1,107 @@
+name: shopwise_app
+description: ShopWise - Smart Business Assistant for Small Grocery Shopkeepers in Bangladesh
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI & Design
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+  
+  # Navigation
+  go_router: ^12.1.3
+  
+  # API & Networking
+  dio: ^5.4.0
+  retrofit: ^4.0.3
+  json_annotation: ^4.8.1
+  
+  # Local Storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+  
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.3
+  
+  # Utilities
+  logger: ^2.0.2
+  equatable: ^2.0.5
+  freezed_annotation: ^2.4.1
+  
+  # Form Validation
+  formz: ^0.6.1
+  
+  
+  # Charts (Simple)
+  fl_chart: ^0.65.0
+  
+  # Image
+  cached_network_image: ^3.3.0
+  
+  # Permissions
+  permission_handler: ^11.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  # Linting & Analysis
+  flutter_lints: ^3.0.1
+  
+  # Code Generation
+  build_runner: ^2.4.7
+  freezed: ^2.4.6
+  json_serializable: ^6.7.1
+  riverpod_generator: ^2.3.9
+  retrofit_generator: ^8.0.4
+  
+  # Testing
+  mockito: ^5.4.4
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  
+  # Assets
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/
+  
+  # Fonts
+  # fonts:
+  #   - family: Roboto
+  #     fonts:
+  #       - asset: fonts/Roboto-Regular.ttf
+  #       - asset: fonts/Roboto-Bold.ttf
+  #         weight: 700
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  adaptive_icon_background: "#2E7D32"
+  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+
+# Analysis Options
+# analyzer:
+#   exclude:
+#     - "**/*.g.dart"
+#     - "**/*.freezed.dart"
+dependency_overrides:
+  path_provider_android: 2.2.11

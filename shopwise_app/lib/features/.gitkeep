@@ -1,0 +1,11 @@
+# Feature modules directory
+# Features will be added in implementation phases:
+# - auth/
+# - onboarding/
+# - dashboard/
+# - products/
+# - stock/
+# - sales/
+# - insights/
+# - notifications/
+# - profile/
