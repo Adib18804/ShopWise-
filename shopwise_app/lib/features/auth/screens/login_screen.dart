@@ -6,7 +6,7 @@ import '../widgets/auth_text_field.dart';
 import '../widgets/auth_button.dart';
 import 'register_screen.dart';
 import '../../shop/screens/shop_setup_screen.dart';
-import '../../dashboard/screens/dashboard_screen.dart';
+import '../../../widgets/layout/main_shell.dart';
 
 /// Login screen
 class LoginScreen extends ConsumerStatefulWidget {
@@ -49,7 +49,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         // Navigate to dashboard
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
-            builder: (_) => const DashboardScreen(),
+            builder: (_) => const ShopWiseShell(),
           ),
         );
       } else {

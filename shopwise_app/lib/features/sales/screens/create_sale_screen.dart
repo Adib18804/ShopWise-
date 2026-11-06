@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -411,22 +413,47 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
           final inCart = _cart[product.id]?.quantityCents ?? 0;
           final stockCents = _toQuantityCents(product.totalStock);
           final canAdd = inCart + 100 <= stockCents;
-          return ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-            title: Text(product.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-                '\u09F3${product.sellingPrice.toStringAsFixed(2)} · \u09b8\u09cd\u099f\u0995 ${_formatQuantity(stockCents)} ${product.unit}'),
-            trailing: IconButton.filled(
-              tooltip:
-                  '\u0995\u09be\u09b0\u09cd\u099f\u09c7 \u09af\u09cb\u0997 \u0995\u09b0\u09c1\u09a8',
-              style: IconButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: Colors.white),
-              onPressed: canAdd ? () => _addProduct(product) : null,
-              icon: const Icon(Icons.add),
-            ),
+          // Feature 2: wrap in Consumer so each tile independently watches
+          // its own FEFO hint without rebuilding the whole list.
+          return Consumer(
+            builder: (ctx, watchRef, _) {
+              final docId = product.docId ?? '';
+              final fefoAsync = docId.isNotEmpty
+                  ? watchRef.watch(_fefoHintProvider(docId))
+                  : const AsyncData<DateTime?>(null);
+              final earliestExpiry = fefoAsync.valueOrNull;
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    dense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 2),
+                    title: Text(product.name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                        '৳${product.sellingPrice.toStringAsFixed(2)} · স্টক ${_formatQuantity(stockCents)} ${product.unit}'),
+                    trailing: IconButton.filled(
+                      tooltip: 'কার্টে যোগ করুন',
+                      style: IconButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.white),
+                      onPressed: canAdd ? () => _addProduct(product) : null,
+                      icon: const Icon(Icons.add),
+                    ),
+                  ),
+                  // FEFO hint badge — only shown when a dated batch exists.
+                  if (earliestExpiry != null)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          left: 6, right: 6, bottom: 4),
+                      child: _FefoBadge(expiryDate: earliestExpiry),
+                    ),
+                ],
+              );
+            },
           );
         },
       ),
@@ -648,8 +675,100 @@ class _InfoCard extends StatelessWidget {
       );
 }
 
+// =============================================================================
+// Feature 2: FEFO badge widget
+// =============================================================================
+
+/// Shows a compact orange hint strip: "এই ব্যাচটি আগে বিক্রি করুন (মেয়াদ: DD/MM/YY)"
+class _FefoBadge extends StatelessWidget {
+  final DateTime expiryDate;
+  const _FefoBadge({required this.expiryDate});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = expiryDate;
+    final dateStr =
+        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year.toString().substring(2)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.schedule_rounded,
+              size: 12, color: AppColors.accent),
+          const SizedBox(width: 4),
+          Text(
+            'এই ব্যাচটি আগে বিক্রি করুন (মেয়াদ: $dateStr)',
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.accentDark,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Money / quantity helpers (unchanged)
+// =============================================================================
 final _moneyInputFormatter =
     FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'));
+
+// =============================================================================
+// Feature 2: FEFO hint provider
+// =============================================================================
+
+/// Fetches the earliest non-expired expiry date for a product's active batches.
+/// Returns null if no dated batches exist (no hint needed).
+/// Uses a family provider keyed by the Firestore product doc id (String).
+final _fefoHintProvider =
+    FutureProvider.family<DateTime?, String>((ref, productDocId) async {
+  if (productDocId.isEmpty) return null;
+  try {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    final snap = await FirebaseFirestore.instance
+        .collection('shops')
+        .doc(uid)
+        .collection('batches')
+        .where('product_id', isEqualTo: productDocId)
+        .get();
+
+    DateTime? earliest;
+    var eligibleBatchCount = 0;
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final active = data['is_active'] as bool? ?? true;
+      final qty = (data['quantity'] as num?)?.toDouble() ?? 0;
+      if (!active || qty <= 0) continue;
+      final raw = data['expiry_date'];
+      DateTime? expiry;
+      if (raw is Timestamp) expiry = raw.toDate();
+      if (expiry == null) continue;
+      // Skip already-expired batches — the FEFO hint is about "sell this first"
+      // among current stock, not about promoting expired goods.
+      final today = DateTime.now();
+      if (expiry.isBefore(DateTime(today.year, today.month, today.day))) {
+        continue;
+      }
+      eligibleBatchCount++;
+      if (earliest == null || expiry.isBefore(earliest)) earliest = expiry;
+    }
+    // A single batch needs no allocation hint; show the badge when there is a
+    // choice to make and FEFO identifies which expiry should be consumed first.
+    return eligibleBatchCount > 1 ? earliest : null;
+  } catch (_) {
+    return null;
+  }
+});
 
 int _toCents(double amount) => (amount * 100).round();
 
