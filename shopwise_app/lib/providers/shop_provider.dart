@@ -144,7 +144,6 @@ class ShopNotifier extends StateNotifier<ShopState> {
 
     try {
       final updatedShop = await _shopService.updateShop(
-        shopId: state.shop!.id,
         shopName: shopName,
         address: address,
         phone: phone,
@@ -177,7 +176,7 @@ class ShopNotifier extends StateNotifier<ShopState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      await _shopService.deleteShop(state.shop!.id);
+      await _shopService.deleteShop();
 
       state = ShopState(
         hasShop: false,
