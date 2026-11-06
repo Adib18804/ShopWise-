@@ -2,16 +2,19 @@ rules_version = '2';
 
 // ShopWise Firestore Security Rules
 //
-// Data model (prototype):
-//   users/{uid}                 – the user's profile
-//   shops/{uid}                 – the shop, keyed by the OWNER's Firebase UID
-//   shops/{uid}/products/{id}   – products
-//   shops/{uid}/batches/{id}    – stock batches
-//   shops/{uid}/invoices/{id}   – sales invoices
+// Data model:
+//   users/{uid}                   – user profile
+//   shops/{uid}                   – shop, keyed by owner Firebase UID
+//   shops/{uid}/products/{id}     – products
+//   shops/{uid}/batches/{id}      – stock batches
+//   shops/{uid}/invoices/{id}     – sales invoices
+//   shops/{uid}/customers/{id}    – customers / baki khata
+//   shops/{uid}/categories/{id}   – product categories
 //
-// Because the shop document id equals the owner's UID, a single check
-// (request.auth.uid == shopId) guarantees that a shopkeeper can only ever
-// read or write their OWN shop's data — including every nested subcollection.
+// Because the shop document id equals the owner's UID, a single
+// `request.auth.uid == shopId` check in the recursive wildcard rule keeps
+// every shop's data fully isolated — no user can read or write another
+// shop's subcollections.
 
 service cloud.firestore {
   match /databases/{database}/documents {

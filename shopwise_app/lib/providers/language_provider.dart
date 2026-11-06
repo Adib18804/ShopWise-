@@ -68,6 +68,20 @@ class AppLocalizations {
   String get noAlertsHere =>
       isBn ? 'এই বিভাগে কোনো ঝুঁকি নেই' : 'No risks in this section';
 
+  // --- Sale history / customer strings -----------------------------------
+  String get saleHistory => isBn ? 'বিক্রয় ইতিহাস' : 'Sale History';
+  String get customers => isBn ? 'বাকি খাতা' : 'Customers';
+  String get recordPayment => isBn ? 'পেমেন্ট রেকর্ড' : 'Record Payment';
+
+  // --- Profit / Loss strings ----------------------------------------------
+  String get todayProfit => isBn ? 'আজকের আনুমানিক লাভ' : "Today's Est. Profit";
+  String get potentialLoss => isBn ? 'মেয়াদোত্তীর্ণ ক্ষতি' : 'Expired Stock Loss';
+
+  // --- FEFO / Restock strings ---------------------------------------------
+  String get restockSuggested => isBn ? 'রিস্টক করুন' : 'Restock';
+  String get fefoHint =>
+      isBn ? 'পরামর্শ: এই ব্যাচ আগে বিক্রি করুন (FEFO)' : 'Tip: Sell this batch first (FEFO)';
+
   String get logout => isBn ? 'লগআউট' : 'Logout';
   String get confirmLogoutTitle => isBn ? 'লগআউট' : 'Logout';
   String get confirmLogoutMessage =>

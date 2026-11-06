@@ -6,15 +6,21 @@ import '../../../models/insight_models.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/insight_provider.dart';
 import '../../../providers/language_provider.dart';
+import '../../../services/notification_service.dart';
 import '../../auth/screens/welcome_screen.dart';
+import '../../customers/screens/customer_list_screen.dart';
 import '../../products/screens/product_form_screen.dart';
 import '../../reports/screens/report_screen.dart';
 import '../../sales/screens/create_sale_screen.dart';
+import '../../sales/screens/sale_history_screen.dart';
 
-/// Smart Assistant dashboard: today's summary banner, three tappable alert
-/// cards (stock-out / expiry / dead stock), and quick-action buttons. The whole
-/// screen reacts to [appLocalizationsProvider] so the language toggle swaps every
-/// string live.
+/// Smart Assistant Dashboard.
+///
+/// • Today's summary banner (sales, items, estimated profit)
+/// • Three tappable insight cards (stock-out / expiry / dead stock)
+/// • Profit & Loss cards (today's profit + expired stock loss)
+/// • Quick-action buttons (Add Product, New Sale, Sale History, Customers, Reports)
+/// • Fires local notifications when risks are detected
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -26,8 +32,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Compute the Smart Assistant summary for the signed-in shop.
-    Future.microtask(() => ref.read(insightsProvider.notifier).load());
+    Future.microtask(_loadAndNotify);
+  }
+
+  Future<void> _loadAndNotify() async {
+    await ref.read(insightsProvider.notifier).load();
+    if (!mounted) return;
+    final summary = ref.read(insightsProvider).summary;
+    if (summary == null) return;
+    // Task 5 — fire local notifications when risks exist.
+    final expiryCount = summary.expiryAlerts.length;
+    final stockOutCount = summary.stockOutAlerts.length;
+    if (expiryCount > 0) {
+      await NotificationService.instance.showExpiryWarning(expiryCount);
+    }
+    if (stockOutCount > 0) {
+      await NotificationService.instance.showStockOutWarning(stockOutCount);
+    }
   }
 
   @override
@@ -56,23 +77,70 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => ref.read(insightsProvider.notifier).load(),
+        onRefresh: () async {
+          await ref.read(insightsProvider.notifier).load();
+          final s = ref.read(insightsProvider).summary;
+          if (s == null || !mounted) return;
+          if (s.expiryAlerts.isNotEmpty) {
+            await NotificationService.instance
+                .showExpiryWarning(s.expiryAlerts.length);
+          }
+          if (s.stockOutAlerts.isNotEmpty) {
+            await NotificationService.instance
+                .showStockOutWarning(s.stockOutAlerts.length);
+          }
+        },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 30),
           children: [
+            // Error banner
             if (insights.error != null)
               _ErrorBanner(
                 message: l.refreshFailed,
                 retryLabel: l.retry,
-                onRetry: () => ref.read(insightsProvider.notifier).load(),
+                onRetry: _loadAndNotify,
               ),
+
+            // ── Today's summary ─────────────────────────────────────────
             _TodaySummaryBanner(
               l: l,
               userName: auth.user?.name,
               summary: summary,
               isLoading: insights.isLoading && summary == null,
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 18),
+
+            // ── Profit & Loss insight cards ──────────────────────────────
+            if (summary != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _MiniInsightCard(
+                      icon: Icons.trending_up_rounded,
+                      label: l.todayProfit,
+                      value: l.formatAmount(summary.todayEstimatedProfit),
+                      color: summary.todayEstimatedProfit >= 0
+                          ? AppColors.success
+                          : AppColors.error,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MiniInsightCard(
+                      icon: Icons.warning_amber_rounded,
+                      label: l.potentialLoss,
+                      value: l.formatAmount(summary.expiredValue),
+                      color: summary.expiredValue > 0
+                          ? AppColors.riskCritical
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            // ── Smart insights (alert cards) ─────────────────────────────
             _SectionTitle(l.smartInsights),
             const SizedBox(height: 14),
             _AlertCard(
@@ -93,8 +161,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               countText: summary == null
                   ? l.loading
                   : l.itemsExpiring(summary.expiryAlerts.length),
-              valueText: (summary == null ||
-                      summary.totalExpiryValueAtRisk <= 0)
+              valueText: (summary == null || summary.totalExpiryValueAtRisk <= 0)
                   ? null
                   : '${l.valueAtRisk}: ${l.formatAmount(summary.totalExpiryValueAtRisk)}',
               gradientColors: const [Color(0xFFFB8C00), Color(0xFFFFB74D)],
@@ -108,16 +175,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               countText: summary == null
                   ? l.loading
                   : l.slowItems(summary.deadStockAlerts.length),
-              valueText: (summary == null ||
-                      summary.deadStockAlerts.isEmpty)
+              valueText: (summary == null || summary.deadStockAlerts.isEmpty)
                   ? null
                   : '${l.stockValue}: ${l.formatAmount(_deadStockValue(summary))}',
               gradientColors: const [Color(0xFF1E88E5), Color(0xFF64B5F6)],
               onTap: () => _showDeadStockSheet(context, l, summary),
             ),
             const SizedBox(height: 30),
+
+            // ── Quick actions ────────────────────────────────────────────
             _SectionTitle(l.quickActions),
             const SizedBox(height: 14),
+            // Row 1: Add Product | New Sale | Sale History
             Row(
               children: [
                 Expanded(
@@ -140,12 +209,38 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _QuickActionButton(
+                    icon: Icons.receipt_long_rounded,
+                    label: l.saleHistory,
+                    colors: const [Color(0xFF00897B), Color(0xFF4DB6AC)],
+                    onTap: () => _push(context, const SaleHistoryScreen()),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Row 2: Customers (Baki) | Reports
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickActionButton(
+                    icon: Icons.people_alt_rounded,
+                    label: l.customers,
+                    colors: const [Color(0xFF7B1FA2), Color(0xFFBA68C8)],
+                    onTap: () => _push(context, const CustomerListScreen()),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickActionButton(
                     icon: Icons.insights_rounded,
                     label: l.viewReports,
                     colors: const [AppColors.secondary, AppColors.secondaryLight],
                     onTap: () => _push(context, const ReportScreen()),
                   ),
                 ),
+                const SizedBox(width: 12),
+                // Spacer to keep 3-column alignment
+                const Expanded(child: SizedBox.shrink()),
               ],
             ),
           ],
@@ -153,6 +248,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
     );
   }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   double _deadStockValue(SmartSummary s) =>
       s.deadStockAlerts.fold<double>(0, (a, b) => a + b.stockValue);
@@ -169,13 +266,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         content: Text(l.confirmLogoutMessage),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l.no),
-          ),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l.no)),
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l.yes),
-          ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l.yes)),
         ],
       ),
     );
@@ -183,29 +278,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     await ref.read(authProvider.notifier).logout();
     if (!context.mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
-    );
+        MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()));
   }
 
-  // ---------------------------------------------------------------------------
-  // Alert detail bottom sheets
-  // ---------------------------------------------------------------------------
+  // ── Bottom sheets ──────────────────────────────────────────────────────────
 
   void _showStockOutSheet(
       BuildContext context, AppLocalizations l, SmartSummary? summary) {
     final alerts = summary?.stockOutAlerts ?? const <StockOutAlert>[];
-    final tiles = <Widget>[
-      for (final a in alerts)
-        _DetailTile(
-          color: _stockOutColor(a.severity),
-          title: a.productName,
-          subtitle: a.severity == StockOutSeverity.outOfStock
-              ? l.outOfStock
-              : l.runsOutIn(a.daysRemaining),
-          meta:
-              '${l.currentStock}: ${l.formatQty(a.currentStock, a.unit)} • ${l.suggestedRestock}: ~${l.formatQty(a.suggestedRestock, a.unit)}',
-        ),
-    ];
     _showAlertSheet(
       context: context,
       l: l,
@@ -213,25 +293,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       headerColor: const Color(0xFFE53935),
       headerIcon: Icons.error_outline_rounded,
       count: alerts.length,
-      tiles: tiles,
+      tiles: alerts
+          .map((a) => _DetailTile(
+                color: _stockOutColor(a.severity),
+                title: a.productName,
+                subtitle: a.severity == StockOutSeverity.outOfStock
+                    ? l.outOfStock
+                    : l.runsOutIn(a.daysRemaining),
+                meta:
+                    '${l.currentStock}: ${l.formatQty(a.currentStock, a.unit)} • ${l.suggestedRestock}: ~${l.formatQty(a.suggestedRestock, a.unit)}',
+              ))
+          .toList(),
     );
   }
 
   void _showExpirySheet(
       BuildContext context, AppLocalizations l, SmartSummary? summary) {
     final alerts = summary?.expiryAlerts ?? const <ExpiryAlert>[];
-    final tiles = <Widget>[
-      for (final a in alerts)
-        _DetailTile(
-          color: _expiryColor(a.severity),
-          title: a.productName,
-          subtitle:
-              a.daysUntilExpiry < 0 ? l.expired : l.expiresIn(a.daysUntilExpiry),
-          meta:
-              '${l.batch}: ${a.batchNumber ?? '—'} • ${l.quantity}: ${l.formatQty(a.quantity)}',
-          trailing: l.formatAmount(a.valueAtRisk),
-        ),
-    ];
     _showAlertSheet(
       context: context,
       l: l,
@@ -239,24 +317,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       headerColor: const Color(0xFFFB8C00),
       headerIcon: Icons.schedule_rounded,
       count: alerts.length,
-      tiles: tiles,
+      tiles: alerts
+          .map((a) => _DetailTile(
+                color: _expiryColor(a.severity),
+                title: a.productName,
+                subtitle: a.daysUntilExpiry < 0
+                    ? l.expired
+                    : l.expiresIn(a.daysUntilExpiry),
+                meta:
+                    '${l.batch}: ${a.batchNumber ?? '—'} • ${l.quantity}: ${l.formatQty(a.quantity)}',
+                trailing: l.formatAmount(a.valueAtRisk),
+              ))
+          .toList(),
     );
   }
 
   void _showDeadStockSheet(
       BuildContext context, AppLocalizations l, SmartSummary? summary) {
     final alerts = summary?.deadStockAlerts ?? const <DeadStockAlert>[];
-    final tiles = <Widget>[
-      for (final a in alerts)
-        _DetailTile(
-          color: const Color(0xFF1E88E5),
-          title: a.productName,
-          subtitle: l.noSalesIn30,
-          meta:
-              '${l.currentStock}: ${l.formatQty(a.stockQuantity, a.unit)} • ${l.lastSale}: ${a.lastSaleDate == null ? l.neverSold : l.formatDate(a.lastSaleDate!)}',
-          trailing: l.formatAmount(a.stockValue),
-        ),
-    ];
     _showAlertSheet(
       context: context,
       l: l,
@@ -264,7 +342,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       headerColor: const Color(0xFF1E88E5),
       headerIcon: Icons.hourglass_bottom_rounded,
       count: alerts.length,
-      tiles: tiles,
+      tiles: alerts
+          .map((a) => _DetailTile(
+                color: const Color(0xFF1E88E5),
+                title: a.productName,
+                subtitle: l.noSalesIn30,
+                meta:
+                    '${l.currentStock}: ${l.formatQty(a.stockQuantity, a.unit)} • ${l.lastSale}: ${a.lastSaleDate == null ? l.neverSold : l.formatDate(a.lastSaleDate!)}',
+                trailing: l.formatAmount(a.stockValue),
+              ))
+          .toList(),
     );
   }
 
@@ -282,98 +369,86 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black54,
-      builder: (sheetContext) {
-        return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(sheetContext).size.height * 0.78,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
+      builder: (sheetContext) => Container(
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.78),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
                   color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: headerColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(headerIcon, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        title,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                        color: headerColor, shape: BoxShape.circle),
+                    child:
+                        Icon(headerIcon, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(title,
                         style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: headerColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: headerColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        l.formatQty(count),
+                    child: Text(l.formatQty(count),
                         style: TextStyle(
-                          color: headerColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                    ),
+                            color: headerColor,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (tiles.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Text(l.noAlertsHere,
+                    style:
+                        const TextStyle(color: AppColors.textSecondary)),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                  children: [
+                    for (final tile in tiles) ...[
+                      tile,
+                      const SizedBox(height: 10),
+                    ],
                   ],
                 ),
               ),
-              const Divider(height: 1),
-              if (tiles.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Text(
-                    l.noAlertsHere,
-                    style: const TextStyle(color: AppColors.textSecondary),
-                  ),
-                )
-              else
-                Flexible(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-                    children: [
-                      for (final tile in tiles) ...[
-                        tile,
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -403,10 +478,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 }
 
 // =============================================================================
-// UI widgets
+// Reusable widgets
 // =============================================================================
 
-/// BN | EN segmented toggle in the app bar.
 class _LanguageToggle extends ConsumerWidget {
   const _LanguageToggle();
 
@@ -422,41 +496,41 @@ class _LanguageToggle extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _segment(lang == AppLanguage.bn, 'BN',
+          _seg(lang == AppLanguage.bn, 'BN',
               () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.bn)),
-          _segment(lang == AppLanguage.en, 'EN',
+          _seg(lang == AppLanguage.en, 'EN',
               () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.en)),
         ],
       ),
     );
   }
 
-  Widget _segment(bool active, String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
-        transitionBuilder: (child, anim) =>
-            ScaleTransition(scale: anim, child: child),
-        child: Container(
-          key: ValueKey('$label-$active'),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: active ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? AppColors.primary : Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+  Widget _seg(bool active, String label, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, anim) =>
+              ScaleTransition(scale: anim, child: child),
+          child: Container(
+            key: ValueKey('$label-$active'),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: active ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? AppColors.primary : Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -467,14 +541,13 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Text(
         text,
         style: const TextStyle(
-          fontSize: 19,
-          fontWeight: FontWeight.bold,
-          color: AppColors.textPrimary,
-        ),
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary),
       );
 }
 
-/// Today's summary banner: welcome + date + today's sales + items sold.
+/// Today's summary banner — sales, items sold, plus today's estimated profit.
 class _TodaySummaryBanner extends StatelessWidget {
   final AppLocalizations l;
   final String? userName;
@@ -499,10 +572,9 @@ class _TodaySummaryBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
+              color: AppColors.primary.withOpacity(0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 8)),
         ],
       ),
       child: Column(
@@ -517,16 +589,13 @@ class _TodaySummaryBanner extends StatelessWidget {
                     Text(
                       '${l.welcome}, ${userName ?? ''}!',
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      l.formatDate(DateTime.now()),
-                      style: const TextStyle(color: Colors.white70),
-                    ),
+                    Text(l.formatDate(DateTime.now()),
+                        style: const TextStyle(color: Colors.white70)),
                   ],
                 ),
               ),
@@ -542,22 +611,16 @@ class _TodaySummaryBanner extends StatelessWidget {
                   label: l.todaysSales,
                   value: isLoading
                       ? '...'
-                      : (amount == null
-                          ? l.formatAmount(0)
-                          : l.formatAmount(amount)),
+                      : l.formatAmount(amount ?? 0),
                 ),
               ),
               Container(
-                  width: 1,
-                  height: 38,
-                  color: Colors.white.withOpacity(0.3)),
+                  width: 1, height: 38, color: Colors.white.withOpacity(0.3)),
               const SizedBox(width: 16),
               Expanded(
                 child: _BannerStat(
                   label: l.itemsSold,
-                  value: isLoading
-                      ? '...'
-                      : l.formatQty(items ?? 0),
+                  value: isLoading ? '...' : l.formatQty(items ?? 0),
                 ),
               ),
             ],
@@ -577,21 +640,72 @@ class _BannerStat extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(label,
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold)),
         ],
       );
 }
 
-/// A tappable alert card with an entrance animation.
+/// Small 2-column insight card for profit & loss figures.
+class _MiniInsightCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MiniInsightCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x12000000),
+                blurRadius: 10,
+                offset: Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(label,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.bold, color: color),
+            ),
+          ],
+        ),
+      );
+}
+
 class _AlertCard extends StatelessWidget {
   final int index;
   final IconData icon;
@@ -648,10 +762,9 @@ class _AlertCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: gradientColors.first.withOpacity(0.25),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
+                            color: gradientColors.first.withOpacity(0.25),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4)),
                       ],
                     ),
                     child: Icon(icon, color: Colors.white, size: 30),
@@ -661,30 +774,23 @@ class _AlertCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
+                        Text(title,
+                            style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary)),
                         const SizedBox(height: 4),
-                        Text(
-                          countText,
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 14),
-                        ),
+                        Text(countText,
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 14)),
                         if (valueText != null) ...[
                           const SizedBox(height: 4),
-                          Text(
-                            valueText!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: gradientColors.first,
-                            ),
-                          ),
+                          Text(valueText!,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: gradientColors.first)),
                         ],
                       ],
                     ),
@@ -699,7 +805,6 @@ class _AlertCard extends StatelessWidget {
       );
 }
 
-/// Large filled quick-action button.
 class _QuickActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -728,17 +833,15 @@ class _QuickActionButton extends StatelessWidget {
             child: Ink(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: colors,
-                ),
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: colors),
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
-                    color: colors.first.withOpacity(0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
+                      color: colors.first.withOpacity(0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5)),
                 ],
               ),
               child: Container(
@@ -755,10 +858,9 @@ class _QuickActionButton extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13),
                     ),
                   ],
                 ),
@@ -769,18 +871,21 @@ class _QuickActionButton extends StatelessWidget {
       );
 }
 
-/// Thin inline error banner with a retry action.
 class _ErrorBanner extends StatelessWidget {
   final String message;
   final String retryLabel;
   final VoidCallback onRetry;
+
   const _ErrorBanner(
-      {required this.message, required this.retryLabel, required this.onRetry});
+      {required this.message,
+      required this.retryLabel,
+      required this.onRetry});
 
   @override
   Widget build(BuildContext context) => Container(
         margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.error.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
@@ -791,22 +896,21 @@ class _ErrorBanner extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(message,
-                  style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                  style: const TextStyle(
+                      color: AppColors.error, fontSize: 13)),
             ),
             TextButton(
               onPressed: onRetry,
-              child: Text(
-                retryLabel,
-                style: const TextStyle(
-                    color: AppColors.error, fontWeight: FontWeight.bold),
-              ),
+              child: Text(retryLabel,
+                  style: const TextStyle(
+                      color: AppColors.error,
+                      fontWeight: FontWeight.bold)),
             ),
           ],
         ),
       );
 }
 
-/// A single alert detail row inside a bottom sheet.
 class _DetailTile extends StatelessWidget {
   final Color color;
   final String title;
@@ -835,37 +939,26 @@ class _DetailTile extends StatelessWidget {
               Container(
                 width: 5,
                 decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(3),
-                ),
+                    color: color, borderRadius: BorderRadius.circular(3)),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary)),
                     const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(color: color, fontSize: 14),
-                    ),
+                    Text(subtitle,
+                        style: TextStyle(color: color, fontSize: 14)),
                     if (meta != null) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        meta!,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
+                      Text(meta!,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12)),
                     ],
                   ],
                 ),
@@ -873,14 +966,11 @@ class _DetailTile extends StatelessWidget {
               if (trailing != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    trailing!,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
+                  child: Text(trailing!,
+                      style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14)),
                 ),
             ],
           ),

@@ -1,15 +1,21 @@
-/// Sale payload sent to POST /api/v1/sales.
+/// Sale payload sent to the sales engine (Firestore).
 class SaleRequest {
   final List<SaleRequestItem> items;
   final double discount;
   final List<SaleRequestPayment> payments;
   final int? customerId;
+  /// Firestore document id of the customer; replaces the legacy numeric id
+  /// for Firestore-backed sales.
+  final String? customerDocId;
+  final String? customerName;
 
   const SaleRequest({
     required this.items,
     this.discount = 0,
     this.payments = const [],
     this.customerId,
+    this.customerDocId,
+    this.customerName,
   });
 
   Map<String, dynamic> toJson() => {
