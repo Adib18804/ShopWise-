@@ -1,26 +1,25 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../models/insight_models.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/insight_provider.dart';
 import '../../../providers/language_provider.dart';
+import '../../../providers/reports_provider.dart';
+import '../../../providers/shop_provider.dart';
 import '../../../services/notification_service.dart';
-import '../../auth/screens/welcome_screen.dart';
-import '../../customers/screens/customer_list_screen.dart';
 import '../../products/screens/product_form_screen.dart';
-import '../../reports/screens/report_screen.dart';
 import '../../sales/screens/create_sale_screen.dart';
-import '../../sales/screens/sale_history_screen.dart';
 
-/// Smart Assistant Dashboard.
+/// Home tab of the ShopWise shell — redesigned with the brand design system.
 ///
-/// • Today's summary banner (sales, items, estimated profit)
-/// • Three tappable insight cards (stock-out / expiry / dead stock)
-/// • Profit & Loss cards (today's profit + expired stock loss)
-/// • Quick-action buttons (Add Product, New Sale, Sale History, Customers, Reports)
-/// • Fires local notifications when risks are detected
+/// Business logic (InsightsNotifier, SmartSummary, notification triggers) is
+/// identical to the previous version. New additions:
+///   • 7-day sales trend line chart (fl_chart) below the summary hero card.
+///   • Full "Why am I seeing this?" bottom sheet per stock-out recommendation.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -28,600 +27,411 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(_loadAndNotify);
+    Future.microtask(_loadAll);
   }
 
-  Future<void> _loadAndNotify() async {
-    await ref.read(insightsProvider.notifier).load();
+  Future<void> _loadAll() async {
+    // Load insights (Smart Assistant data) and reports (7-day chart).
+    await Future.wait([
+      ref.read(insightsProvider.notifier).load(),
+      ref.read(reportsProvider.notifier).load(),
+    ]);
     if (!mounted) return;
     final summary = ref.read(insightsProvider).summary;
     if (summary == null) return;
-    // Task 5 — fire local notifications when risks exist.
-    final expiryCount = summary.expiryAlerts.length;
-    final stockOutCount = summary.stockOutAlerts.length;
-    if (expiryCount > 0) {
-      await NotificationService.instance.showExpiryWarning(expiryCount);
+    if (summary.expiryAlerts.isNotEmpty) {
+      await NotificationService.instance.showExpiryWarning(summary.expiryAlerts.length);
     }
-    if (stockOutCount > 0) {
-      await NotificationService.instance.showStockOutWarning(stockOutCount);
+    if (summary.stockOutAlerts.isNotEmpty) {
+      await NotificationService.instance.showStockOutWarning(summary.stockOutAlerts.length);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final l = ref.watch(appLocalizationsProvider);
     final auth = ref.watch(authProvider);
+    final shop = ref.watch(shopProvider);
     final insights = ref.watch(insightsProvider);
+    final reports = ref.watch(reportsProvider);
     final summary = insights.summary;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(l.appName),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        actions: [
-          const _LanguageToggle(),
-          IconButton(
-            tooltip: l.logout,
-            icon: const Icon(Icons.logout),
-            onPressed: () => _confirmLogout(context, l),
-          ),
-          const SizedBox(width: 4),
-        ],
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: _DashboardAppBar(
+          shopName: shop.shop?.shopName ?? 'ShopWise',
+          userName: auth.user?.name ?? '',
+          l: l,
+        ),
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          await ref.read(insightsProvider.notifier).load();
-          final s = ref.read(insightsProvider).summary;
-          if (s == null || !mounted) return;
-          if (s.expiryAlerts.isNotEmpty) {
-            await NotificationService.instance
-                .showExpiryWarning(s.expiryAlerts.length);
-          }
-          if (s.stockOutAlerts.isNotEmpty) {
-            await NotificationService.instance
-                .showStockOutWarning(s.stockOutAlerts.length);
-          }
-        },
+        color: AppColors.primary,
+        onRefresh: _loadAll,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 30),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
             // Error banner
-            if (insights.error != null)
+            if (insights.error != null) ...[
               _ErrorBanner(
                 message: l.refreshFailed,
                 retryLabel: l.retry,
-                onRetry: _loadAndNotify,
+                onRetry: _loadAll,
               ),
+              const SizedBox(height: 12),
+            ],
 
-            // ── Today's summary ─────────────────────────────────────────
-            _TodaySummaryBanner(
+            // ── Smart summary hero card ──────────────────────────────────
+            _SmartSummaryCard(
+              summary: summary,
+              isLoading: insights.isLoading,
               l: l,
-              userName: auth.user?.name,
+            ),
+            const SizedBox(height: 12),
+
+            // ── 7-day sales trend chart ──────────────────────────────────
+            _SalesTrendCard(
+              trend: reports.summary?.salesTrend ?? const [],
+              isLoading: reports.isLoading && reports.summary == null,
+              l: l,
+            ),
+            const SizedBox(height: 20),
+
+            // ── Quick actions ────────────────────────────────────────────
+            _SectionHeader(l.quickActions),
+            const SizedBox(height: 12),
+            _QuickActionsRow(l: l),
+            const SizedBox(height: 24),
+
+            // ── Attention needed — alert list ────────────────────────────
+            _SectionHeader(l.smartInsights),
+            const SizedBox(height: 12),
+            _AttentionList(
               summary: summary,
               isLoading: insights.isLoading && summary == null,
+              l: l,
+              onStockOut: () => _showSheet(
+                  context, l, l.stockOutRisk,
+                  AppColors.riskCritical, Icons.error_outline_rounded,
+                  _stockOutTiles(summary, l)),
+              onExpiry: () => _showSheet(
+                  context, l, l.expiryRisk,
+                  AppColors.riskHigh, Icons.schedule_rounded,
+                  _expiryTiles(summary, l)),
+              onDeadStock: () => _showSheet(
+                  context, l, l.deadStock,
+                  AppColors.info, Icons.hourglass_bottom_rounded,
+                  _deadStockTiles(summary, l)),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 24),
 
-            // ── Profit & Loss insight cards ──────────────────────────────
+            // ── Profit & Loss ────────────────────────────────────────────
             if (summary != null) ...[
+              _SectionHeader(l.isBn ? 'লাভ-ক্ষতি' : 'Profit & Loss'),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
-                    child: _MiniInsightCard(
+                    child: _PLCard(
                       icon: Icons.trending_up_rounded,
                       label: l.todayProfit,
                       value: l.formatAmount(summary.todayEstimatedProfit),
-                      color: summary.todayEstimatedProfit >= 0
-                          ? AppColors.success
-                          : AppColors.error,
+                      positive: summary.todayEstimatedProfit >= 0,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _MiniInsightCard(
-                      icon: Icons.warning_amber_rounded,
+                    child: _PLCard(
+                      icon: Icons.report_outlined,
                       label: l.potentialLoss,
                       value: l.formatAmount(summary.expiredValue),
-                      color: summary.expiredValue > 0
-                          ? AppColors.riskCritical
-                          : AppColors.textSecondary,
+                      positive: summary.expiredValue == 0,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 24),
             ],
 
-            // ── Smart insights (alert cards) ─────────────────────────────
-            _SectionTitle(l.smartInsights),
-            const SizedBox(height: 14),
-            _AlertCard(
-              index: 0,
-              icon: Icons.error_outline_rounded,
-              title: l.stockOutRisk,
-              countText: summary == null
-                  ? l.loading
-                  : l.itemsAtRisk(summary.stockOutAlerts.length),
-              gradientColors: const [Color(0xFFE53935), Color(0xFFFF7043)],
-              onTap: () => _showStockOutSheet(context, l, summary),
-            ),
-            const SizedBox(height: 14),
-            _AlertCard(
-              index: 1,
-              icon: Icons.schedule_rounded,
-              title: l.expiryRisk,
-              countText: summary == null
-                  ? l.loading
-                  : l.itemsExpiring(summary.expiryAlerts.length),
-              valueText: (summary == null || summary.totalExpiryValueAtRisk <= 0)
-                  ? null
-                  : '${l.valueAtRisk}: ${l.formatAmount(summary.totalExpiryValueAtRisk)}',
-              gradientColors: const [Color(0xFFFB8C00), Color(0xFFFFB74D)],
-              onTap: () => _showExpirySheet(context, l, summary),
-            ),
-            const SizedBox(height: 14),
-            _AlertCard(
-              index: 2,
-              icon: Icons.hourglass_bottom_rounded,
-              title: l.deadStock,
-              countText: summary == null
-                  ? l.loading
-                  : l.slowItems(summary.deadStockAlerts.length),
-              valueText: (summary == null || summary.deadStockAlerts.isEmpty)
-                  ? null
-                  : '${l.stockValue}: ${l.formatAmount(_deadStockValue(summary))}',
-              gradientColors: const [Color(0xFF1E88E5), Color(0xFF64B5F6)],
-              onTap: () => _showDeadStockSheet(context, l, summary),
-            ),
-            const SizedBox(height: 30),
-
-            // ── Quick actions ────────────────────────────────────────────
-            _SectionTitle(l.quickActions),
-            const SizedBox(height: 14),
-            // Row 1: Add Product | New Sale | Sale History
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickActionButton(
-                    icon: Icons.add_circle_rounded,
-                    label: l.addProduct,
-                    colors: const [AppColors.primary, AppColors.primaryLight],
-                    onTap: () => _push(context, const ProductFormScreen()),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _QuickActionButton(
-                    icon: Icons.point_of_sale_rounded,
-                    label: l.newSale,
-                    colors: const [AppColors.accent, AppColors.accentLight],
-                    onTap: () => _push(context, const CreateSaleScreen()),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _QuickActionButton(
-                    icon: Icons.receipt_long_rounded,
-                    label: l.saleHistory,
-                    colors: const [Color(0xFF00897B), Color(0xFF4DB6AC)],
-                    onTap: () => _push(context, const SaleHistoryScreen()),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Row 2: Customers (Baki) | Reports
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickActionButton(
-                    icon: Icons.people_alt_rounded,
-                    label: l.customers,
-                    colors: const [Color(0xFF7B1FA2), Color(0xFFBA68C8)],
-                    onTap: () => _push(context, const CustomerListScreen()),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _QuickActionButton(
-                    icon: Icons.insights_rounded,
-                    label: l.viewReports,
-                    colors: const [AppColors.secondary, AppColors.secondaryLight],
-                    onTap: () => _push(context, const ReportScreen()),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Spacer to keep 3-column alignment
-                const Expanded(child: SizedBox.shrink()),
-              ],
-            ),
+            // ── Smart recommendation card ────────────────────────────────
+            if (summary != null && summary.stockOutAlerts.isNotEmpty)
+              _SmartRecommendationCard(summary: summary, l: l),
           ],
         ),
       ),
     );
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Sheet data builders ────────────────────────────────────────────────────
 
-  double _deadStockValue(SmartSummary s) =>
-      s.deadStockAlerts.fold<double>(0, (a, b) => a + b.stockValue);
+  List<_SheetAlertItem> _stockOutTiles(SmartSummary? s, AppLocalizations l) =>
+      (s?.stockOutAlerts ?? <StockOutAlert>[]).map((a) {
+        final color = a.severity == StockOutSeverity.outOfStock
+            ? AppColors.riskCritical
+            : a.severity == StockOutSeverity.critical
+                ? AppColors.riskHigh
+                : AppColors.riskMedium;
+        return _SheetAlertItem(
+          title: a.productName,
+          subtitle: a.severity == StockOutSeverity.outOfStock
+              ? l.outOfStock
+              : l.runsOutIn(a.daysRemaining),
+          meta: '${l.currentStock}: ${l.formatQty(a.currentStock, a.unit)} · '
+              '${l.suggestedRestock}: ~${l.formatQty(a.suggestedRestock, a.unit)}',
+          color: color,
+        );
+      }).toList();
 
-  static void _push(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
-  }
+  List<_SheetAlertItem> _expiryTiles(SmartSummary? s, AppLocalizations l) =>
+      (s?.expiryAlerts ?? <ExpiryAlert>[]).map((a) {
+        final color = a.severity == ExpirySeverity.expired
+            ? AppColors.riskCritical
+            : a.severity == ExpirySeverity.critical
+                ? AppColors.riskHigh
+                : AppColors.riskMedium;
+        return _SheetAlertItem(
+          title: a.productName,
+          subtitle: a.daysUntilExpiry < 0 ? l.expired : l.expiresIn(a.daysUntilExpiry),
+          meta: '${l.batch}: ${a.batchNumber ?? "—"} · '
+              '${l.quantity}: ${l.formatQty(a.quantity)}',
+          trailing: l.formatAmount(a.valueAtRisk),
+          color: color,
+        );
+      }).toList();
 
-  Future<void> _confirmLogout(BuildContext context, AppLocalizations l) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l.confirmLogoutTitle),
-        content: Text(l.confirmLogoutMessage),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(l.no)),
-          TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(l.yes)),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    await ref.read(authProvider.notifier).logout();
-    if (!context.mounted) return;
-    Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()));
-  }
+  List<_SheetAlertItem> _deadStockTiles(SmartSummary? s, AppLocalizations l) =>
+      (s?.deadStockAlerts ?? <DeadStockAlert>[]).map((a) => _SheetAlertItem(
+            title: a.productName,
+            subtitle: l.noSalesIn30,
+            meta: '${l.currentStock}: ${l.formatQty(a.stockQuantity, a.unit)} · '
+                '${l.lastSale}: ${a.lastSaleDate == null ? l.neverSold : l.formatDate(a.lastSaleDate!)}',
+            trailing: l.formatAmount(a.stockValue),
+            color: AppColors.info,
+          )).toList();
 
-  // ── Bottom sheets ──────────────────────────────────────────────────────────
-
-  void _showStockOutSheet(
-      BuildContext context, AppLocalizations l, SmartSummary? summary) {
-    final alerts = summary?.stockOutAlerts ?? const <StockOutAlert>[];
-    _showAlertSheet(
-      context: context,
-      l: l,
-      title: l.stockOutRisk,
-      headerColor: const Color(0xFFE53935),
-      headerIcon: Icons.error_outline_rounded,
-      count: alerts.length,
-      tiles: alerts
-          .map((a) => _DetailTile(
-                color: _stockOutColor(a.severity),
-                title: a.productName,
-                subtitle: a.severity == StockOutSeverity.outOfStock
-                    ? l.outOfStock
-                    : l.runsOutIn(a.daysRemaining),
-                meta:
-                    '${l.currentStock}: ${l.formatQty(a.currentStock, a.unit)} • ${l.suggestedRestock}: ~${l.formatQty(a.suggestedRestock, a.unit)}',
-              ))
-          .toList(),
-    );
-  }
-
-  void _showExpirySheet(
-      BuildContext context, AppLocalizations l, SmartSummary? summary) {
-    final alerts = summary?.expiryAlerts ?? const <ExpiryAlert>[];
-    _showAlertSheet(
-      context: context,
-      l: l,
-      title: l.expiryRisk,
-      headerColor: const Color(0xFFFB8C00),
-      headerIcon: Icons.schedule_rounded,
-      count: alerts.length,
-      tiles: alerts
-          .map((a) => _DetailTile(
-                color: _expiryColor(a.severity),
-                title: a.productName,
-                subtitle: a.daysUntilExpiry < 0
-                    ? l.expired
-                    : l.expiresIn(a.daysUntilExpiry),
-                meta:
-                    '${l.batch}: ${a.batchNumber ?? '—'} • ${l.quantity}: ${l.formatQty(a.quantity)}',
-                trailing: l.formatAmount(a.valueAtRisk),
-              ))
-          .toList(),
-    );
-  }
-
-  void _showDeadStockSheet(
-      BuildContext context, AppLocalizations l, SmartSummary? summary) {
-    final alerts = summary?.deadStockAlerts ?? const <DeadStockAlert>[];
-    _showAlertSheet(
-      context: context,
-      l: l,
-      title: l.deadStock,
-      headerColor: const Color(0xFF1E88E5),
-      headerIcon: Icons.hourglass_bottom_rounded,
-      count: alerts.length,
-      tiles: alerts
-          .map((a) => _DetailTile(
-                color: const Color(0xFF1E88E5),
-                title: a.productName,
-                subtitle: l.noSalesIn30,
-                meta:
-                    '${l.currentStock}: ${l.formatQty(a.stockQuantity, a.unit)} • ${l.lastSale}: ${a.lastSaleDate == null ? l.neverSold : l.formatDate(a.lastSaleDate!)}',
-                trailing: l.formatAmount(a.stockValue),
-              ))
-          .toList(),
-    );
-  }
-
-  Future<void> _showAlertSheet({
-    required BuildContext context,
-    required AppLocalizations l,
-    required String title,
-    required Color headerColor,
-    required IconData headerIcon,
-    required int count,
-    required List<Widget> tiles,
-  }) {
+  Future<void> _showSheet(
+    BuildContext context,
+    AppLocalizations l,
+    String title,
+    Color color,
+    IconData icon,
+    List<_SheetAlertItem> items,
+  ) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black54,
-      builder: (sheetContext) => Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.78),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                        color: headerColor, shape: BoxShape.circle),
-                    child:
-                        Icon(headerIcon, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(title,
-                        style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: headerColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(l.formatQty(count),
-                        style: TextStyle(
-                            color: headerColor,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            if (tiles.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 48),
-                child: Text(l.noAlertsHere,
-                    style:
-                        const TextStyle(color: AppColors.textSecondary)),
-              )
-            else
-              Flexible(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-                  children: [
-                    for (final tile in tiles) ...[
-                      tile,
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                ),
-              ),
-          ],
-        ),
+      barrierColor: Colors.black38,
+      builder: (_) => _AlertBottomSheet(
+        title: title,
+        color: color,
+        icon: icon,
+        items: items,
+        l: l,
       ),
     );
-  }
-
-  Color _stockOutColor(StockOutSeverity severity) {
-    switch (severity) {
-      case StockOutSeverity.outOfStock:
-        return AppColors.riskCritical;
-      case StockOutSeverity.critical:
-        return AppColors.riskHigh;
-      case StockOutSeverity.warning:
-        return AppColors.riskMedium;
-    }
-  }
-
-  Color _expiryColor(ExpirySeverity severity) {
-    switch (severity) {
-      case ExpirySeverity.expired:
-        return AppColors.riskCritical;
-      case ExpirySeverity.critical:
-        return AppColors.riskHigh;
-      case ExpirySeverity.warning:
-        return AppColors.riskMedium;
-      case ExpirySeverity.notice:
-        return AppColors.riskWarning;
-    }
   }
 }
 
 // =============================================================================
-// Reusable widgets
+// App bar
 // =============================================================================
 
-class _LanguageToggle extends ConsumerWidget {
-  const _LanguageToggle();
+class _DashboardAppBar extends StatelessWidget {
+  final String shopName;
+  final String userName;
+  final AppLocalizations l;
+
+  const _DashboardAppBar({
+    required this.shopName,
+    required this.userName,
+    required this.l,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = userName.isNotEmpty ? userName[0].toUpperCase() : 'S';
+    return Container(
+      color: AppColors.surface,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top,
+        left: 16,
+        right: 16,
+        bottom: 12,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.store_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(shopName,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
+                Text(l.welcome,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+          _LangToggle(),
+          const SizedBox(width: 4),
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: AppColors.primaryLight.withOpacity(0.2),
+            child: Text(initials,
+                style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LangToggle extends ConsumerWidget {
+  const _LangToggle();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lang = ref.watch(languageProvider).language;
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
+        color: AppColors.surfaceVariant,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _seg(lang == AppLanguage.bn, 'BN',
+          _pill(lang == AppLanguage.bn, 'BN',
               () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.bn)),
-          _seg(lang == AppLanguage.en, 'EN',
+          _pill(lang == AppLanguage.en, 'EN',
               () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.en)),
         ],
       ),
     );
   }
 
-  Widget _seg(bool active, String label, VoidCallback onTap) =>
+  Widget _pill(bool active, String label, VoidCallback onTap) =>
       GestureDetector(
         onTap: onTap,
-        child: AnimatedSwitcher(
+        child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          transitionBuilder: (child, anim) =>
-              ScaleTransition(scale: anim, child: child),
-          child: Container(
-            key: ValueKey('$label-$active'),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: active ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: active ? AppColors.primary : Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: active ? AppColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: active ? Colors.white : AppColors.textSecondary,
             ),
           ),
         ),
       );
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
+// =============================================================================
+// Smart Summary hero card
+// =============================================================================
 
-  @override
-  Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary),
-      );
-}
-
-/// Today's summary banner — sales, items sold, plus today's estimated profit.
-class _TodaySummaryBanner extends StatelessWidget {
-  final AppLocalizations l;
-  final String? userName;
+class _SmartSummaryCard extends StatelessWidget {
   final SmartSummary? summary;
   final bool isLoading;
+  final AppLocalizations l;
 
-  const _TodaySummaryBanner({
-    required this.l,
-    required this.userName,
+  const _SmartSummaryCard({
     required this.summary,
     required this.isLoading,
+    required this.l,
   });
 
   @override
   Widget build(BuildContext context) {
-    final amount = summary?.todaySalesAmount;
-    final items = summary?.todayItemsSold;
+    final stockOut = summary?.stockOutAlerts.length ?? 0;
+    final expiring = summary?.expiryAlerts.length ?? 0;
+    final todaySales = summary?.todaySalesAmount ?? 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(22),
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(AppTheme.radiusXl),
         boxShadow: [
           BoxShadow(
-              color: AppColors.primary.withOpacity(0.22),
-              blurRadius: 18,
-              offset: const Offset(0, 8)),
+            color: AppColors.primary.withOpacity(0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${l.welcome}, ${userName ?? ''}!',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(l.formatDate(DateTime.now()),
-                        style: const TextStyle(color: Colors.white70)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.trending_up_rounded,
-                  color: Colors.white, size: 34),
+              Text(l.todaySummary,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              Text(l.formatDate(DateTime.now()),
+                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
+          Text(
+            isLoading ? '...' : l.formatAmount(todaySales),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          Text(l.todaysSales,
+              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(
-                child: _BannerStat(
-                  label: l.todaysSales,
-                  value: isLoading
-                      ? '...'
-                      : l.formatAmount(amount ?? 0),
-                ),
+              _AlertChip(
+                label: l.isBn ? 'কম স্টক' : 'Low Stock',
+                count: stockOut,
+                loading: isLoading,
               ),
-              Container(
-                  width: 1, height: 38, color: Colors.white.withOpacity(0.3)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _BannerStat(
-                  label: l.itemsSold,
-                  value: isLoading ? '...' : l.formatQty(items ?? 0),
-                ),
+              const SizedBox(width: 10),
+              _AlertChip(
+                label: l.isBn ? 'মেয়াদ ঝুঁকি' : 'Expiry Risk',
+                count: expiring,
+                loading: isLoading,
               ),
             ],
           ),
@@ -631,251 +441,1310 @@ class _TodaySummaryBanner extends StatelessWidget {
   }
 }
 
-class _BannerStat extends StatelessWidget {
+class _AlertChip extends StatelessWidget {
   final String label;
-  final String value;
-  const _BannerStat({required this.label, required this.value});
+  final int count;
+  final bool loading;
+  const _AlertChip({required this.label, required this.count, required this.loading});
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(width: 6),
+            Text(
+              loading ? '...' : count.toString().padLeft(2, '0'),
+              style: const TextStyle(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15),
+            ),
+          ],
+        ),
+      );
+}
+
+// =============================================================================
+// Feature 4: 7-day sales trend chart
+// =============================================================================
+
+class _SalesTrendCard extends StatelessWidget {
+  final List<dynamic> trend; // List<SalesTrendPoint>
+  final bool isLoading;
+  final AppLocalizations l;
+
+  const _SalesTrendCard({
+    required this.trend,
+    required this.isLoading,
+    required this.l,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 4),
-          Text(value,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                l.isBn ? 'গত ৭ দিনের বিক্রি' : '7-Day Sales Trend',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Icon(Icons.show_chart_rounded,
+                  color: AppColors.primary, size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 80,
+            child: isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : trend.length < 7
+                    ? Center(
+                        child: Text(
+                          l.isBn ? 'তথ্য নেই' : 'No data yet',
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      )
+                    : _TrendLineChart(trend: trend, l: l),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrendLineChart extends StatelessWidget {
+  final List<dynamic> trend;
+  final AppLocalizations l;
+  const _TrendLineChart({required this.trend, required this.l});
+
+  @override
+  Widget build(BuildContext context) {
+    // trend is List<SalesTrendPoint> from DailyReportModel.
+    // Each has .date (String) and .salesAmount (double).
+    final amounts = trend
+        .map((p) {
+          final dynamic pt = p;
+          final num amount = (pt.salesAmount as num?) ?? 0;
+          return amount.toDouble();
+        })
+        .toList();
+
+    final maxY = amounts.isEmpty
+        ? 100.0
+        : (amounts.reduce((a, b) => a > b ? a : b) * 1.2).clamp(1.0, double.infinity);
+
+    final spots = amounts.asMap().entries.map((e) {
+      return FlSpot(e.key.toDouble(), e.value);
+    }).toList();
+
+    return LineChart(
+      LineChartData(
+        minY: 0,
+        maxY: maxY,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 2,
+          getDrawingHorizontalLine: (_) => FlLine(
+            color: AppColors.border,
+            strokeWidth: 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 22,
+              interval: 1,
+              getTitlesWidget: (value, meta) {
+                final idx = value.toInt();
+                if (idx < 0 || idx >= trend.length) {
+                  return const SizedBox.shrink();
+                }
+                final dynamic pt = trend[idx];
+                final String dateStr = (pt.date as String?) ?? '';
+                final parsed = DateTime.tryParse(dateStr);
+                final label = parsed == null
+                    ? ''
+                    : l.isBn
+                        ? _bnWeekdayShort(parsed.weekday)
+                        : _enWeekdayShort(parsed.weekday);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textSecondary),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            curveSmoothness: 0.35,
+            color: AppColors.primary,
+            barWidth: 2.5,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+                radius: 3,
+                color: AppColors.primary,
+                strokeWidth: 1.5,
+                strokeColor: Colors.white,
+              ),
+            ),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withOpacity(0.18),
+                  AppColors.primary.withOpacity(0.0),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+        ],
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: AppColors.primary,
+            getTooltipItems: (spots) => spots
+                .map((s) => LineTooltipItem(
+                      l.formatAmount(s.y),
+                      const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
+                    ))
+                .toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _bnWeekdayShort(int w) =>
+      ['সো', 'মঙ', 'বু', 'বৃ', 'শু', 'শ', 'র'][w - 1];
+  static String _enWeekdayShort(int w) =>
+      ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'][w - 1];
+}
+
+// =============================================================================
+// Quick actions
+// =============================================================================
+
+class _SectionHeader extends StatelessWidget {
+  final String text;
+  const _SectionHeader(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary),
+      );
+}
+
+class _QuickActionsRow extends StatelessWidget {
+  final AppLocalizations l;
+  const _QuickActionsRow({required this.l});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          _QuickCard(
+            icon: Icons.point_of_sale_rounded,
+            label: l.isBn ? 'বিক্রি করুন' : 'Record Sale',
+            iconColor: AppColors.primary,
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const CreateSaleScreen())),
+          ),
+          const SizedBox(width: 10),
+          _QuickCard(
+            icon: Icons.add_box_rounded,
+            label: l.isBn ? 'স্টক যোগ' : 'Add Stock',
+            iconColor: AppColors.accent,
+            onTap: () {},
+          ),
+          const SizedBox(width: 10),
+          _QuickCard(
+            icon: Icons.inventory_2_rounded,
+            label: l.addProduct,
+            iconColor: AppColors.success,
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ProductFormScreen())),
+          ),
         ],
       );
 }
 
-/// Small 2-column insight card for profit & loss figures.
-class _MiniInsightCard extends StatelessWidget {
+class _QuickCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String value;
-  final Color color;
-
-  const _MiniInsightCard({
+  final Color iconColor;
+  final VoidCallback onTap;
+  const _QuickCard({
     required this.icon,
     required this.label,
-    required this.value,
-    required this.color,
+    required this.iconColor,
+    required this.onTap,
   });
 
   @override
+  Widget build(BuildContext context) => Expanded(
+        child: Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            splashColor: iconColor.withOpacity(0.1),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: iconColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: iconColor, size: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+// =============================================================================
+// Attention list
+// =============================================================================
+
+class _AttentionList extends StatelessWidget {
+  final SmartSummary? summary;
+  final bool isLoading;
+  final AppLocalizations l;
+  final VoidCallback onStockOut;
+  final VoidCallback onExpiry;
+  final VoidCallback onDeadStock;
+
+  const _AttentionList({
+    required this.summary,
+    required this.isLoading,
+    required this.l,
+    required this.onStockOut,
+    required this.onExpiry,
+    required this.onDeadStock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: CircularProgressIndicator(strokeWidth: 2)));
+    }
+
+    final stockAlert = summary?.stockOutAlerts.firstOrNull;
+    final expiryAlert = summary?.expiryAlerts.firstOrNull;
+    final deadAlert = summary?.deadStockAlerts.firstOrNull;
+
+    final hasAnyAlert =
+        (summary?.stockOutAlerts.isNotEmpty ?? false) ||
+        (summary?.expiryAlerts.isNotEmpty ?? false) ||
+        (summary?.deadStockAlerts.isNotEmpty ?? false);
+
+    if (!hasAnyAlert && summary != null) return _NoAlertsCard(l: l);
+
+    return Column(
+      children: [
+        if (stockAlert != null)
+          _AlertListItem(
+            icon: Icons.error_outline_rounded,
+            accentColor: AppColors.riskCritical,
+            title: stockAlert.productName,
+            subtitle: stockAlert.severity == StockOutSeverity.outOfStock
+                ? l.outOfStock
+                : l.runsOutIn(stockAlert.daysRemaining),
+            count: summary?.stockOutAlerts.length ?? 0,
+            onTap: onStockOut,
+          ),
+        if (stockAlert != null && (expiryAlert != null || deadAlert != null))
+          const SizedBox(height: 8),
+        if (expiryAlert != null)
+          _AlertListItem(
+            icon: Icons.schedule_rounded,
+            accentColor: AppColors.riskHigh,
+            title: expiryAlert.productName,
+            subtitle: expiryAlert.daysUntilExpiry < 0
+                ? l.expired
+                : l.expiresIn(expiryAlert.daysUntilExpiry),
+            count: summary?.expiryAlerts.length ?? 0,
+            onTap: onExpiry,
+          ),
+        if (expiryAlert != null && deadAlert != null) const SizedBox(height: 8),
+        if (deadAlert != null)
+          _AlertListItem(
+            icon: Icons.hourglass_bottom_rounded,
+            accentColor: AppColors.info,
+            title: deadAlert.productName,
+            subtitle: l.noSalesIn30,
+            count: summary?.deadStockAlerts.length ?? 0,
+            onTap: onDeadStock,
+          ),
+      ],
+    );
+  }
+}
+
+class _AlertListItem extends StatelessWidget {
+  final IconData icon;
+  final Color accentColor;
+  final String title;
+  final String subtitle;
+  final int count;
+  final VoidCallback onTap;
+
+  const _AlertListItem({
+    required this.icon,
+    required this.accentColor,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: accentColor,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.1),
+                      shape: BoxShape.circle),
+                  child: Icon(icon, color: accentColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text(subtitle,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: accentColor,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+                if (count > 1) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(30)),
+                    child: Text('+${count - 1}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: accentColor)),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                const Icon(Icons.chevron_right,
+                    size: 18, color: AppColors.textDisabled),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _NoAlertsCard extends StatelessWidget {
+  final AppLocalizations l;
+  const _NoAlertsCard({required this.l});
+
+  @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x12000000),
-                blurRadius: 10,
-                offset: Offset(0, 4)),
+          color: AppColors.success.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(color: AppColors.success.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.check_circle_outline_rounded,
+                color: AppColors.success, size: 28),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(l.noAlerts,
+                  style: const TextStyle(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14)),
+            ),
           ],
+        ),
+      );
+}
+
+// =============================================================================
+// Profit & Loss
+// =============================================================================
+
+class _PLCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool positive;
+  const _PLCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.positive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = positive ? AppColors.success : AppColors.error;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Feature 1: Smart recommendation card with full "Why" bottom sheet
+// =============================================================================
+
+class _SmartRecommendationCard extends StatelessWidget {
+  final SmartSummary summary;
+  final AppLocalizations l;
+  const _SmartRecommendationCard({required this.summary, required this.l});
+
+  @override
+  Widget build(BuildContext context) {
+    final topAlert = summary.stockOutAlerts.first;
+    final suggestion = topAlert.suggestedRestock > 0
+        ? l.formatQty(topAlert.suggestedRestock, topAlert.unit)
+        : '—';
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.96, end: 1),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutBack,
+      builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFFFF8F2), Color(0xFFFFF1E0)],
+          ),
+          borderRadius: BorderRadius.circular(AppTheme.radiusXl),
+          border: Border.all(color: AppColors.accent.withOpacity(0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Row(
               children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(label,
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lightbulb_outline_rounded,
+                      color: AppColors.accent, size: 20),
                 ),
+                const SizedBox(width: 10),
+                Text(
+                  l.isBn ? 'স্মার্ট পরামর্শ' : 'Smart Recommendation',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accentDark),
+                ),
+                const Spacer(),
+                // "All recommendations" link
+                if (summary.stockOutAlerts.length > 1)
+                  GestureDetector(
+                    onTap: () => _showAllRecommendations(context),
+                    child: Text(
+                      l.isBn ? 'সব দেখুন' : 'See all',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            // Recommendation body
             Text(
-              value,
-              style: TextStyle(
-                  fontSize: 17, fontWeight: FontWeight.bold, color: color),
+              l.isBn
+                  ? '${topAlert.productName} এর স্টক কম হতে পারে। সাম্প্রতিক বিক্রির ভিত্তিতে ~$suggestion রিস্টক বিবেচনা করুন।'
+                  : '${topAlert.productName} stock may need attention. Based on recent sales, consider restocking ~$suggestion.',
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textPrimary, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            // "Why am I seeing this?" — opens full bottom sheet
+            GestureDetector(
+              onTap: () => _showWhySheet(context, topAlert),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      l.isBn ? 'কেন দেখছি?' : 'Why am I seeing this?',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.open_in_new_rounded,
+                        size: 13, color: AppColors.primary),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  void _showWhySheet(BuildContext context, StockOutAlert alert) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black38,
+      builder: (_) => _WhyBottomSheet(alert: alert, l: l),
+    );
+  }
+
+  void _showAllRecommendations(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black38,
+      builder: (_) => _AllRecommendationsSheet(summary: summary, l: l),
+    );
+  }
 }
 
-class _AlertCard extends StatelessWidget {
-  final int index;
-  final IconData icon;
-  final String title;
-  final String countText;
-  final String? valueText;
-  final List<Color> gradientColors;
-  final VoidCallback onTap;
+// =============================================================================
+// Feature 1: "Why am I seeing this?" — detailed explanation sheet
+// =============================================================================
 
-  const _AlertCard({
-    required this.index,
-    required this.icon,
-    required this.title,
-    required this.countText,
-    this.valueText,
-    required this.gradientColors,
-    required this.onTap,
-  });
+/// Deep-dive explanation sheet for a single stock-out alert.
+/// Shows step-by-step logic in simple Bengali + English.
+class _WhyBottomSheet extends StatelessWidget {
+  final StockOutAlert alert;
+  final AppLocalizations l;
+  const _WhyBottomSheet({required this.alert, required this.l});
 
   @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.94, end: 1),
-        duration: const Duration(milliseconds: 380),
-        curve: Curves.easeOutBack,
-        builder: (context, scale, child) =>
-            Transform.scale(scale: scale, child: child),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          elevation: 4,
-          shadowColor: gradientColors.first.withOpacity(0.2),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          child: InkWell(
-            onTap: onTap,
+  Widget build(BuildContext context) {
+    final isBn = l.isBn;
+
+    // Derive plain-language numbers for the explanation.
+    final soldLast7 = (alert.avgDailySales * 7).round();
+    final currentStockStr = l.formatQty(alert.currentStock, alert.unit);
+    final avgDailyStr = l.formatQty(alert.avgDailySales, alert.unit);
+    final suggestionStr = alert.suggestedRestock > 0
+        ? l.formatQty(alert.suggestedRestock, alert.unit)
+        : '—';
+
+    return Container(
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          // Drag handle
+          Center(
             child: Container(
-              padding: const EdgeInsets.all(16),
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    gradientColors.first.withOpacity(0.12),
-                    gradientColors.last.withOpacity(0.04),
-                  ],
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: gradientColors),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                            color: gradientColors.first.withOpacity(0.25),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4)),
-                      ],
-                    ),
-                    child: Icon(icon, color: Colors.white, size: 30),
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          // Sheet header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.12),
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
+                  child: const Icon(Icons.lightbulb_outline_rounded,
+                      color: AppColors.accent, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isBn ? 'কেন এই পরামর্শ?' : 'Why this recommendation?',
+                        style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary),
+                      ),
+                      Text(
+                        alert.productName,
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Plain-language summary sentence
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      border: Border.all(
+                          color: AppColors.accent.withOpacity(0.25)),
+                    ),
+                    child: Text(
+                      isBn
+                          ? 'গত ৭ দিনে ${l.formatQty(soldLast7.toDouble(), alert.unit)} ${alert.productName} বিক্রি হয়েছে, '
+                              'তাই আপনার স্টক আনুমানিক ${alert.daysRemaining} দিনের মধ্যে শেষ হবে।'
+                          : 'In the last 7 days, $soldLast7 ${alert.unit} of ${alert.productName} '
+                              'was sold, so your stock may run out in ~${alert.daysRemaining} day(s).',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                          height: 1.6,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Step-by-step logic blocks
+                  Text(
+                    isBn ? 'লজিকটি এভাবে কাজ করে:' : 'Here\'s how the logic works:',
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary),
+                  ),
+                  const SizedBox(height: 12),
+                  _LogicStep(
+                    step: 1,
+                    title: isBn ? 'গড় দৈনিক বিক্রি' : 'Avg daily sales',
+                    body: isBn
+                        ? 'গত ৭ দিনে মোট ${l.formatQty(soldLast7.toDouble(), alert.unit)} বিক্রি ÷ ৭ দিন = দৈনিক ~$avgDailyStr'
+                        : 'Total $soldLast7 ${alert.unit} sold ÷ 7 days = ~$avgDailyStr / day',
+                  ),
+                  const SizedBox(height: 8),
+                  _LogicStep(
+                    step: 2,
+                    title: isBn ? 'বর্তমান স্টক' : 'Current stock',
+                    body: isBn
+                        ? 'আপনার কাছে এখন $currentStockStr আছে।'
+                        : 'You currently have $currentStockStr in stock.',
+                  ),
+                  const SizedBox(height: 8),
+                  _LogicStep(
+                    step: 3,
+                    title: isBn ? 'কত দিন চলবে' : 'Days remaining',
+                    body: isBn
+                        ? '$currentStockStr ÷ $avgDailyStr = আনুমানিক ${alert.daysRemaining} দিন'
+                        : '$currentStockStr ÷ $avgDailyStr = ~${alert.daysRemaining} day(s)',
+                    highlight: true,
+                  ),
+                  const SizedBox(height: 8),
+                  _LogicStep(
+                    step: 4,
+                    title: isBn ? 'পরামর্শ' : 'Suggestion',
+                    body: isBn
+                        ? 'লক্ষ্যমাত্রা পূরণে ~$suggestionStr রিস্টক করার কথা বিবেচনা করুন। '
+                            'চূড়ান্ত সিদ্ধান্ত সম্পূর্ণ আপনার।'
+                        : 'Consider restocking ~$suggestionStr to meet your target stock level. '
+                            'The final decision is entirely yours.',
+                    highlight: true,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Disclaimer
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                    ),
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title,
+                        const Icon(Icons.info_outline,
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            isBn
+                                ? 'এটি একটি আনুমানিক হিসাব। ShopWise কোনো সিদ্ধান্ত নেয় না — সিদ্ধান্ত সব সময় আপনার।'
+                                : 'This is an estimate based on recent sales. '
+                                    'ShopWise never acts automatically — you are always in control.',
                             style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary)),
-                        const SizedBox(height: 4),
-                        Text(countText,
-                            style: const TextStyle(
+                                fontSize: 11,
                                 color: AppColors.textSecondary,
-                                fontSize: 14)),
-                        if (valueText != null) ...[
-                          const SizedBox(height: 4),
-                          Text(valueText!,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: gradientColors.first)),
-                        ],
+                                height: 1.5),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right,
-                      color: gradientColors.first.withOpacity(0.5)),
                 ],
               ),
             ),
           ),
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }
 
-class _QuickActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final List<Color> colors;
-  final VoidCallback onTap;
+class _LogicStep extends StatelessWidget {
+  final int step;
+  final String title;
+  final String body;
+  final bool highlight;
 
-  const _QuickActionButton({
-    required this.icon,
-    required this.label,
-    required this.colors,
-    required this.onTap,
+  const _LogicStep({
+    required this.step,
+    required this.title,
+    required this.body,
+    this.highlight = false,
   });
 
   @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.95, end: 1),
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutBack,
-        builder: (context, scale, child) =>
-            Transform.scale(scale: scale, child: child),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
-            child: Ink(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: colors),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                      color: colors.first.withOpacity(0.25),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5)),
-                ],
-              ),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 18, horizontal: 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, color: Colors.white, size: 30),
-                    const SizedBox(height: 8),
-                    Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13),
-                    ),
-                  ],
-                ),
+  Widget build(BuildContext context) {
+    final color = highlight ? AppColors.primary : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: highlight
+            ? AppColors.primary.withOpacity(0.05)
+            : AppColors.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+        border: Border.all(
+          color: highlight
+              ? AppColors.primary.withOpacity(0.2)
+              : AppColors.border,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                '$step',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: color),
               ),
             ),
           ),
-        ),
-      );
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: color)),
+                const SizedBox(height: 2),
+                Text(body,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                        height: 1.45)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+
+/// Shows all stock-out alerts with their "Why" explanation in one sheet.
+class _AllRecommendationsSheet extends StatelessWidget {
+  final SmartSummary summary;
+  final AppLocalizations l;
+  const _AllRecommendationsSheet({required this.summary, required this.l});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.lightbulb_outline_rounded,
+                    color: AppColors.accent, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    l.isBn ? 'সব পরামর্শ' : 'All Recommendations',
+                    style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              itemCount: summary.stockOutAlerts.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (ctx, i) {
+                final alert = summary.stockOutAlerts[i];
+                final soldLast7 = (alert.avgDailySales * 7).round();
+                final suggestion = alert.suggestedRestock > 0
+                    ? l.formatQty(alert.suggestedRestock, alert.unit)
+                    : '—';
+                return Material(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      showModalBottomSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        barrierColor: Colors.black38,
+                        builder: (_) =>
+                            _WhyBottomSheet(alert: alert, l: l),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.accent,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(alert.productName,
+                                    style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary)),
+                                const SizedBox(height: 3),
+                                Text(
+                                  l.isBn
+                                      ? 'গত ৭ দিনে ${l.formatQty(soldLast7.toDouble(), alert.unit)} বিক্রি · '
+                                          '~$suggestion রিস্টক প্রয়োজন'
+                                      : '$soldLast7 ${alert.unit} sold in 7 days · '
+                                          '~$suggestion restock needed',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right,
+                              size: 18, color: AppColors.textDisabled),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Alert bottom sheet (generic — used by attentionList)
+// =============================================================================
+
+class _SheetAlertItem {
+  final String title;
+  final String subtitle;
+  final String? meta;
+  final String? trailing;
+  final Color color;
+  const _SheetAlertItem({
+    required this.title,
+    required this.subtitle,
+    this.meta,
+    this.trailing,
+    required this.color,
+  });
+}
+
+class _AlertBottomSheet extends StatelessWidget {
+  final String title;
+  final Color color;
+  final IconData icon;
+  final List<_SheetAlertItem> items;
+  final AppLocalizations l;
+  const _AlertBottomSheet({
+    required this.title,
+    required this.color,
+    required this.icon,
+    required this.items,
+    required this.l,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('${items.length}',
+                      style: TextStyle(
+                          color: color, fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.of(context).pop()),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Text(l.noAlertsHere,
+                  style: const TextStyle(color: AppColors.textSecondary)),
+            )
+          else
+            Flexible(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) {
+                  final item = items[i];
+                  return Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: item.color.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                      border: Border.all(color: item.color.withOpacity(0.18)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: item.color,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.title,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary)),
+                              const SizedBox(height: 2),
+                              Text(item.subtitle,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: item.color,
+                                      fontWeight: FontWeight.w500)),
+                              if (item.meta != null)
+                                Text(item.meta!,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
+                        if (item.trailing != null)
+                          Text(item.trailing!,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: item.color)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Error banner
+// =============================================================================
 
 class _ErrorBanner extends StatelessWidget {
   final String message;
   final String retryLabel;
   final VoidCallback onRetry;
-
   const _ErrorBanner(
       {required this.message,
       required this.retryLabel,
@@ -883,16 +1752,15 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+          color: AppColors.error.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          border: Border.all(color: AppColors.error.withOpacity(0.3)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
             const SizedBox(width: 10),
             Expanded(
               child: Text(message,
@@ -901,79 +1769,13 @@ class _ErrorBanner extends StatelessWidget {
             ),
             TextButton(
               onPressed: onRetry,
+              style: TextButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  padding: const EdgeInsets.symmetric(horizontal: 8)),
               child: Text(retryLabel,
-                  style: const TextStyle(
-                      color: AppColors.error,
-                      fontWeight: FontWeight.bold)),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
-        ),
-      );
-}
-
-class _DetailTile extends StatelessWidget {
-  final Color color;
-  final String title;
-  final String subtitle;
-  final String? meta;
-  final String? trailing;
-
-  const _DetailTile({
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    this.meta,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              Container(
-                width: 5,
-                decoration: BoxDecoration(
-                    color: color, borderRadius: BorderRadius.circular(3)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary)),
-                    const SizedBox(height: 4),
-                    Text(subtitle,
-                        style: TextStyle(color: color, fontSize: 14)),
-                    if (meta != null) ...[
-                      const SizedBox(height: 2),
-                      Text(meta!,
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
-                    ],
-                  ],
-                ),
-              ),
-              if (trailing != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(trailing!,
-                      style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14)),
-                ),
-            ],
-          ),
         ),
       );
 }

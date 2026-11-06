@@ -5,7 +5,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../features/auth/widgets/auth_text_field.dart';
 import '../../../features/auth/widgets/auth_button.dart';
-import '../../dashboard/screens/dashboard_screen.dart';
+import '../../../widgets/layout/main_shell.dart';
 
 /// Shop setup screen
 class ShopSetupScreen extends ConsumerStatefulWidget {
@@ -61,7 +61,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       // Navigate to dashboard
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => const DashboardScreen(),
+          builder: (_) => const ShopWiseShell(),
         ),
       );
     } else {

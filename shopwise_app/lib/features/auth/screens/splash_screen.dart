@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../core/theme/app_colors.dart';
-import 'welcome_screen.dart';
+import '../../../widgets/layout/main_shell.dart';
 import '../../shop/screens/shop_setup_screen.dart';
-import '../../dashboard/screens/dashboard_screen.dart';
+import 'welcome_screen.dart';
 
 /// Splash screen - checks auth state and navigates accordingly
 class SplashScreen extends ConsumerStatefulWidget {
@@ -50,7 +50,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
-            builder: (_) => const DashboardScreen(),
+            builder: (_) => const ShopWiseShell(),
           ),
         );
       } else {
