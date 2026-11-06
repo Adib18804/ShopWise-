@@ -1,7 +1,14 @@
-/// Product data returned by the API. Numeric database fields are represented
-/// as doubles because MySQL DECIMAL values can be fractional.
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Product data. Numeric database/Firestore fields are represented as doubles
+/// because DECIMAL/Firestore-number values can be fractional. All numeric
+/// parsing goes through the safe [_toDouble] helper so that `num`, `String`,
+/// `int` and `null` values never throw.
 class ProductModel {
   final int id;
+  /// The Firestore document id of this product. Populated by
+  /// [ProductModel.fromFirestore]; `null` for legacy API-parsed products.
+  final String? docId;
   final int shopId;
   final int? categoryId;
   final String name;
@@ -21,6 +28,7 @@ class ProductModel {
 
   const ProductModel({
     required this.id,
+    this.docId,
     required this.shopId,
     this.categoryId,
     required this.name,
@@ -71,11 +79,64 @@ class ProductModel {
     );
   }
 
+  /// Builds a [ProductModel] from a Firestore document. The shop id is supplied
+  /// by the caller (it is implied by the collection path `shops/{shopId}/...`
+  /// and not stored on each product) and mapped to the legacy `int` id via the
+  /// deterministic [_stableId] hash, matching the mapping used elsewhere.
+  factory ProductModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    required String shopId,
+  }) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return ProductModel(
+      id: _stableId(doc.id),
+      docId: doc.id,
+      shopId: _stableId(shopId),
+      categoryId: data['category_id'] == null
+          ? null
+          : (data['category_id'] is num
+              ? (data['category_id'] as num).toInt()
+              : _stableId(data['category_id'].toString())),
+      name: (data['name'] as String?) ?? '',
+      sku: data['sku'] as String?,
+      barcode: data['barcode'] as String?,
+      unit: (data['unit'] as String?) ?? 'piece',
+      sellingPrice: _toDouble(data['selling_price']),
+      defaultPurchasePrice: _toDouble(data['default_purchase_price']),
+      minimumStock: _toDouble(data['minimum_stock']),
+      targetStockDays: (data['target_stock_days'] as num?)?.toInt() ?? 7,
+      isActive: data['is_active'] == null || data['is_active'] == true,
+      totalStock: _toDouble(data['total_stock']),
+      batchCount: (data['batch_count'] as num?)?.toInt(),
+      createdAt: _toDateTime(data['created_at']),
+      updatedAt: _toDateTime(data['updated_at']),
+      category: data['category_name'] == null
+          ? null
+          : CategoryInfo(id: 0, name: data['category_name'] as String),
+    );
+  }
+
   static double _toDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
+  }
+
+  static DateTime _toDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  /// Deterministic FNV-1a hash so the same Firestore id maps to a stable int.
+  static int _stableId(String value) {
+    var hash = 0x811c9dc5;
+    for (final byte in value.codeUnits) {
+      hash = ((hash ^ byte) * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
   }
 
   Map<String, dynamic> toJson() => {
@@ -100,6 +161,7 @@ class ProductModel {
 
   ProductModel copyWith({
     int? id,
+    String? docId,
     int? shopId,
     int? categoryId,
     String? name,
@@ -119,6 +181,7 @@ class ProductModel {
   }) =>
       ProductModel(
         id: id ?? this.id,
+        docId: docId ?? this.docId,
         shopId: shopId ?? this.shopId,
         categoryId: categoryId ?? this.categoryId,
         name: name ?? this.name,

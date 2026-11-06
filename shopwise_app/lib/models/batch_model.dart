@@ -1,5 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class BatchModel {
   final int id;
+  /// The Firestore document id of this batch. Populated by
+  /// [BatchModel.fromFirestore]; `null` for legacy API-parsed batches.
+  final String? docId;
   final int productId;
   final String? batchNumber;
   final DateTime purchaseDate;
@@ -17,6 +22,7 @@ class BatchModel {
 
   const BatchModel({
     required this.id,
+    this.docId,
     required this.productId,
     this.batchNumber,
     required this.purchaseDate,
@@ -54,11 +60,74 @@ class BatchModel {
             json['is_active'] == true || json['is_active'] == 1,
       );
 
+  /// Builds a [BatchModel] from a Firestore document. Dates are stored as
+  /// Firestore [Timestamp]s but represented as date-only [DateTime]s to match
+  /// the legacy model. [productId]/[shopId] are mapped to the legacy `int` ids
+  /// via the deterministic [_stableId] hash.
+  factory BatchModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    required String shopId,
+  }) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return BatchModel(
+      id: _stableId(doc.id),
+      docId: doc.id,
+      productId: data['product_id'] == null
+          ? 0
+          : _stableId(data['product_id'].toString()),
+      batchNumber: data['batch_number'] as String?,
+      purchaseDate: _parseDate(data['purchase_date']) ?? DateTime.now(),
+      expiryDate: _parseDate(data['expiry_date']),
+      quantity: _toDouble(data['quantity']),
+      purchasePrice: _toDouble(data['purchase_price']),
+      createdAt: _toDateTime(data['created_at']),
+      updatedAt: _toDateTime(data['updated_at']),
+      shopId: _stableId(shopId),
+      isActive: data['is_active'] == null || data['is_active'] == true,
+    );
+  }
+
   static double _toDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
+  }
+
+  /// Firestore-aware date-only parser. Accepts [Timestamp], [DateTime], or a
+  /// `YYYY-MM-DD` / ISO string, and returns a date-only [DateTime] (no time).
+  static DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    DateTime d;
+    if (value is Timestamp) {
+      d = value.toDate();
+    } else if (value is DateTime) {
+      d = value;
+    } else if (value is String) {
+      final parsed = DateTime.tryParse(value.length >= 10 ? value.substring(0, 10) : value);
+      if (parsed == null) return null;
+      d = parsed;
+    } else {
+      return null;
+    }
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  static DateTime _toDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  /// Deterministic FNV-1a hash so the same Firestore id maps to a stable int,
+  /// matching the mapping used in `product_model.dart` and `auth_provider.dart`.
+  static int _stableId(String value) {
+    var hash = 0x811c9dc5;
+    for (final byte in value.codeUnits) {
+      hash = ((hash ^ byte) * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
   }
 
   Map<String, dynamic> toJson() => {
@@ -81,6 +150,7 @@ class BatchModel {
 
   BatchModel copyWith({
     int? id,
+    String? docId,
     int? productId,
     String? batchNumber,
     DateTime? purchaseDate,
@@ -98,6 +168,7 @@ class BatchModel {
   }) =>
       BatchModel(
         id: id ?? this.id,
+        docId: docId ?? this.docId,
         productId: productId ?? this.productId,
         batchNumber: batchNumber ?? this.batchNumber,
         purchaseDate: purchaseDate ?? this.purchaseDate,

@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/network/api_exception.dart';
 import '../models/product_model.dart';
 import '../services/product_service.dart';
-import '../core/network/api_exception.dart';
+import 'category_provider.dart';
 
-/// Product state
+/// Product state (unchanged contract).
 class ProductState {
   final List<ProductModel> products;
   final bool isLoading;
@@ -68,83 +72,73 @@ class ProductState {
   }
 }
 
-/// Product state notifier
+/// Product state notifier backed by a Firestore real-time stream.
+///
+/// [loadProducts] subscribes to [ProductService.productsStream] once; search
+/// and category filters are applied client-side on every snapshot, so the list
+/// stays live without extra round-trips. CRUD methods write to Firestore and
+/// let the stream refresh the list automatically.
 class ProductNotifier extends StateNotifier<ProductState> {
   final ProductService _productService;
+  final Ref _ref;
 
-  ProductNotifier(this._productService) : super(ProductState());
+  StreamSubscription<List<ProductModel>>? _sub;
+  List<ProductModel> _all = const [];
+  String? _search;
+  int? _categoryId;
 
-  /// Load products
+  ProductNotifier(this._productService, this._ref) : super(ProductState());
+
+  /// Load products. On first call this shows a loading spinner until the first
+  /// snapshot; subsequent calls just re-filter the live data instantly.
   Future<void> loadProducts({
     String? search,
     int? categoryId,
   }) async {
-    state = state.copyWith(
-      isLoading: true,
-      error: null,
-      searchQuery: search,
-      selectedCategoryId: categoryId,
-      clearCategory: categoryId == null,
-    );
+    _search = search;
+    _categoryId = categoryId;
 
-    try {
-      final products = await _productService.getProducts(
-        search: search,
-        categoryId: categoryId,
-      );
-
-      state = ProductState(
-        products: products,
-        isLoading: false,
+    final needsSubscribe = _sub == null;
+    if (needsSubscribe) {
+      state = state.copyWith(
+        isLoading: _all.isEmpty,
+        error: null,
         searchQuery: search,
         selectedCategoryId: categoryId,
+        clearCategory: categoryId == null,
       );
-    } catch (e) {
+      await _ensureSubscribed();
+      // The first snapshot will call _applyFilter() with the fresh data.
+    } else {
       state = state.copyWith(
-        isLoading: false,
-        error: e is ApiException ? e.message : 'Failed to load products',
+        error: null,
+        searchQuery: search,
+        selectedCategoryId: categoryId,
+        clearCategory: categoryId == null,
       );
+      _applyFilter();
     }
   }
 
   /// Refresh products
   Future<void> refreshProducts() async {
     state = state.copyWith(isRefreshing: true, error: null);
-
-    try {
-      final products = await _productService.getProducts(
-        search: state.searchQuery,
-        categoryId: state.selectedCategoryId,
-      );
-
-      state = ProductState(
-        products: products,
-        isRefreshing: false,
-        searchQuery: state.searchQuery,
-        selectedCategoryId: state.selectedCategoryId,
-      );
-    } catch (e) {
-      state = state.copyWith(
-        isRefreshing: false,
-        error: e is ApiException ? e.message : 'Failed to refresh products',
-      );
-    }
+    await _sub?.cancel();
+    _sub = null;
+    await _ensureSubscribed();
   }
 
   /// Search products
   Future<void> searchProducts(String query) async {
     await loadProducts(
       search: query.isEmpty ? null : query,
-      categoryId: state.selectedCategoryId,
+      categoryId: _categoryId,
     );
   }
 
   /// Filter by category
   Future<void> filterByCategory(int? categoryId) async {
-    await loadProducts(
-      search: state.searchQuery,
-      categoryId: categoryId,
-    );
+    await loadProducts(search: _search, categoryId: categoryId);
   }
 
   /// Clear filters
@@ -165,7 +159,7 @@ class ProductNotifier extends StateNotifier<ProductState> {
     int targetStockDays = 7,
   }) async {
     try {
-      final product = await _productService.createProduct(
+      await _productService.createProduct(
         categoryId: categoryId,
         name: name,
         sku: sku,
@@ -176,16 +170,11 @@ class ProductNotifier extends StateNotifier<ProductState> {
         minimumStock: minimumStock,
         targetStockDays: targetStockDays,
       );
-
-      // Add to list
-      state = state.copyWith(
-        products: [...state.products, product],
-      );
-
+      // The real-time stream refreshes the list automatically.
       return true;
     } catch (e) {
       state = state.copyWith(
-        error: e is ApiException ? e.message : 'Failed to create product',
+        error: e is ApiException ? e.message : 'পণ্য যোগ করা যায়নি',
       );
       return false;
     }
@@ -205,7 +194,7 @@ class ProductNotifier extends StateNotifier<ProductState> {
     int? targetStockDays,
   }) async {
     try {
-      final updatedProduct = await _productService.updateProduct(
+      await _productService.updateProduct(
         id: id,
         categoryId: categoryId,
         name: name,
@@ -217,21 +206,10 @@ class ProductNotifier extends StateNotifier<ProductState> {
         minimumStock: minimumStock,
         targetStockDays: targetStockDays,
       );
-
-      // Update in list
-      final products = state.products.map((product) {
-        if (product.id == id) {
-          return updatedProduct;
-        }
-        return product;
-      }).toList();
-
-      state = state.copyWith(products: products);
-
       return true;
     } catch (e) {
       state = state.copyWith(
-        error: e is ApiException ? e.message : 'Failed to update product',
+        error: e is ApiException ? e.message : 'পণ্য আপডেট করা যায়নি',
       );
       return false;
     }
@@ -241,38 +219,28 @@ class ProductNotifier extends StateNotifier<ProductState> {
   Future<bool> deleteProduct(int id) async {
     try {
       await _productService.deleteProduct(id);
-
-      // Remove from list
-      final products =
-          state.products.where((product) => product.id != id).toList();
-
-      state = state.copyWith(products: products);
-
       return true;
     } catch (e) {
       state = state.copyWith(
-        error: e is ApiException ? e.message : 'Failed to delete product',
+        error: e is ApiException ? e.message : 'পণ্য মুছতে সমস্যা হয়েছে',
       );
       return false;
     }
   }
 
-  /// Load low stock products
+  /// Load low stock products (one-time; cancels the live stream).
   Future<void> loadLowStockProducts() async {
+    await _sub?.cancel();
+    _sub = null;
     state = state.copyWith(isLoading: true, error: null);
-
     try {
       final products = await _productService.getLowStockProducts();
-
-      state = ProductState(
-        products: products,
-        isLoading: false,
-      );
+      _all = products;
+      state = ProductState(products: _enrich(products), isLoading: false);
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error:
-            e is ApiException ? e.message : 'Failed to load low stock products',
+        error: e is ApiException ? e.message : 'স্টক তথ্য লোড করা যায়নি',
       );
     }
   }
@@ -280,6 +248,71 @@ class ProductNotifier extends StateNotifier<ProductState> {
   /// Clear error
   void clearError() {
     state = state.clearError();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Real-time plumbing
+  // ---------------------------------------------------------------------------
+
+  Future<void> _ensureSubscribed() async {
+    if (_sub != null) return;
+    _sub = _productService.productsStream().listen(
+      (list) {
+        _all = list;
+        _applyFilter();
+      },
+      onError: (Object error) {
+        state = state.copyWith(
+          isLoading: false,
+          isRefreshing: false,
+          error: error is ApiException
+              ? error.message
+              : 'পণ্য তথ্য লোড করা যায়নি',
+        );
+      },
+    );
+  }
+
+  void _applyFilter() {
+    var filtered = _all;
+    if (_categoryId != null) {
+      filtered = filtered.where((p) => p.categoryId == _categoryId).toList();
+    }
+    if (_search != null && _search!.trim().isNotEmpty) {
+      final q = _search!.trim().toLowerCase();
+      filtered = filtered.where((p) {
+        return p.name.toLowerCase().contains(q) ||
+            (p.sku?.toLowerCase().contains(q) ?? false) ||
+            (p.barcode?.toLowerCase().contains(q) ?? false);
+      }).toList();
+    }
+    state = ProductState(
+      products: _enrich(filtered),
+      isLoading: false,
+      isRefreshing: false,
+      searchQuery: _search,
+      selectedCategoryId: _categoryId,
+    );
+  }
+
+  /// Attaches the category name to each product so cards show the real category
+  /// instead of "অজানা" (no server-side join in the prototype).
+  List<ProductModel> _enrich(List<ProductModel> products) {
+    final cats = _ref.read(categoryProvider).categories;
+    if (cats.isEmpty) return products;
+    final byId = <int, String>{for (final c in cats) c.id: c.name};
+    return products.map((p) {
+      if (p.categoryId == null) return p;
+      final name = byId[p.categoryId!];
+      if (name == null) return p;
+      return p.copyWith(category: CategoryInfo(id: p.categoryId!, name: name));
+    }).toList();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 }
 
@@ -292,5 +325,5 @@ final productServiceProvider = Provider<ProductService>((ref) {
 final productProvider =
     StateNotifierProvider<ProductNotifier, ProductState>((ref) {
   final productService = ref.watch(productServiceProvider);
-  return ProductNotifier(productService);
+  return ProductNotifier(productService, ref);
 });

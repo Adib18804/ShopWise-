@@ -1,6 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Category model
 class CategoryModel {
   final int id;
+  /// Firestore document id; `null` for legacy API-parsed categories.
+  final String? docId;
   final int shopId;
   final String name;
   final String? description;
@@ -10,6 +14,7 @@ class CategoryModel {
 
   CategoryModel({
     required this.id,
+    this.docId,
     required this.shopId,
     required this.name,
     this.description,
@@ -30,6 +35,26 @@ class CategoryModel {
     );
   }
 
+  /// Builds a [CategoryModel] from a Firestore document. The legacy `int` id is
+  /// a stable hash of the document id so existing int-based UI (dropdowns,
+  /// filters) keeps working.
+  factory CategoryModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    required String shopId,
+  }) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return CategoryModel(
+      id: _stableId(doc.id),
+      docId: doc.id,
+      shopId: _stableId(shopId),
+      name: (data['name'] as String?) ?? '',
+      description: data['description'] as String?,
+      productCount: (data['product_count'] as num?)?.toInt(),
+      createdAt: _toDateTime(data['created_at']),
+      updatedAt: _toDateTime(data['updated_at']),
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -44,6 +69,7 @@ class CategoryModel {
 
   CategoryModel copyWith({
     int? id,
+    String? docId,
     int? shopId,
     String? name,
     String? description,
@@ -53,6 +79,7 @@ class CategoryModel {
   }) {
     return CategoryModel(
       id: id ?? this.id,
+      docId: docId ?? this.docId,
       shopId: shopId ?? this.shopId,
       name: name ?? this.name,
       description: description ?? this.description,
@@ -60,5 +87,20 @@ class CategoryModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  static DateTime _toDateTime(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  static int _stableId(String value) {
+    var hash = 0x811c9dc5;
+    for (final byte in value.codeUnits) {
+      hash = ((hash ^ byte) * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
   }
 }

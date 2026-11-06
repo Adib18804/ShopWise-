@@ -1,36 +1,36 @@
-import 'package:dio/dio.dart';
-import '../core/constants/api_constants.dart';
+import 'dart:convert';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../core/network/api_exception.dart';
-import '../core/storage/secure_storage.dart';
 import '../models/shop_model.dart';
-import '../models/api_response_model.dart';
 
-/// Shop service
+/// Shop service backed by Cloud Firestore.
+///
+/// Each shop lives at `shops/{ownerUid}` and is keyed by the owner's Firebase
+/// UID, so every method here derives the shop path from the currently signed-in
+/// user instead of relying on a server-issued numeric id or a bearer token.
 class ShopService {
-  final Dio _dio;
-  final SecureStorage _secureStorage;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
-  ShopService({
-    Dio? dio,
-    SecureStorage? secureStorage,
-  })  : _dio = dio ?? Dio(),
-        _secureStorage = secureStorage ?? SecureStorage.instance {
-    _dio.options.baseUrl = ApiConstants.baseUrl;
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 30);
-    _dio.options.headers['Content-Type'] = 'application/json';
-  }
-
-  /// Get authorization header
-  Future<Map<String, String>> _getAuthHeaders() async {
-    final token = await _secureStorage.getToken();
-    if (token == null) {
-      throw ApiException(message: 'No authentication token found');
+  String get _uid {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw ApiException(message: 'প্রথমে লগইন করুন');
     }
-    return {'Authorization': 'Bearer $token'};
+    return uid;
   }
 
-  /// Create new shop
+  DocumentReference<Map<String, dynamic>> get _shopRef =>
+      _firestore.collection('shops').doc(_uid);
+
+  /// Creates (or completes) the shop record for the signed-in user.
+  ///
+  /// The `shops` document is seeded during registration with `setup_complete:
+  /// false`; this merges in the shop name/address/phone/currency and flips the
+  /// flag to `true`, then marks `users.has_shop` for fast auth-state checks.
   Future<ShopModel> createShop({
     required String shopName,
     required String address,
@@ -38,230 +38,148 @@ class ShopService {
     String currency = 'BDT',
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final uid = _uid;
+      final now = DateTime.now().toUtc();
 
-      final response = await _dio.post<dynamic>(
-        ApiConstants.createShop,
-        options: Options(headers: headers),
-        data: {
-          'shop_name': shopName,
-          'address': address,
-          'phone': phone,
-          'currency': currency,
+      final shopFields = <String, dynamic>{
+        'owner_id': uid,
+        'shop_name': shopName.trim(),
+        'address': address.trim(),
+        'phone': phone.trim(),
+        'currency': currency,
+        'setup_complete': true,
+        'updated_at': Timestamp.fromDate(now),
+      };
+      // Merge so the `created_at` seeded at registration is preserved.
+      final batch = _firestore.batch();
+      batch.set(_shopRef, shopFields, SetOptions(merge: true));
+      batch.set(
+        _firestore.collection('users').doc(uid),
+        {
+          'has_shop': true,
+          'updated_at': Timestamp.fromDate(now),
         },
+        SetOptions(merge: true),
       );
+      await batch.commit();
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        final apiResponse = ApiResponse.fromJson(
-          response.data as Map<String, dynamic>,
-          (json) => json,
-        );
-
-        final shopData = apiResponse.data as Map<String, dynamic>;
-        final refreshedToken = shopData['token'] as String?;
-        if (refreshedToken != null && refreshedToken.isNotEmpty) {
-          await _secureStorage.saveToken(refreshedToken);
-        }
-        return ShopModel.fromJson(shopData['shop'] as Map<String, dynamic>);
+      final snapshot = await _shopRef.get();
+      if (!snapshot.exists) {
+        throw ApiException(message: 'দোকান তৈরি করা যায়নি। আবার চেষ্টা করুন।');
       }
-
-      throw ApiException(
-        message: 'Failed to create shop',
-        statusCode: response.statusCode,
-      );
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final data = e.response!.data;
-        if (data is Map<String, dynamic>) {
-          final message = data['message'] as String? ?? 'Failed to create shop';
-          throw ApiException(
-            message: message,
-            statusCode: e.response!.statusCode,
-          );
-        }
-      }
-      throw ApiException(
-        message: e.message ?? 'Network error',
-        statusCode: e.response?.statusCode,
-      );
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
-      );
+      return _toShopModel(snapshot);
+    } on ApiException {
+      rethrow;
+    } catch (error) {
+      throw _mapError(error, fallback: 'দোকান তৈরি করা যায়নি');
     }
   }
 
-  /// Get user's shop
+  /// Returns the signed-in user's shop.
   Future<ShopModel> getMyShop() async {
     try {
-      final headers = await _getAuthHeaders();
-
-      final response = await _dio.get<dynamic>(
-        ApiConstants.getMyShop,
-        options: Options(headers: headers),
-      );
-
-      if (response.statusCode == 200) {
-        final apiResponse = ApiResponse.fromJson(
-          response.data as Map<String, dynamic>,
-          (json) => json,
-        );
-
-        final shopData = apiResponse.data as Map<String, dynamic>;
-        return ShopModel.fromJson(shopData['shop'] as Map<String, dynamic>);
+      final snapshot = await _shopRef.get();
+      if (!snapshot.exists) {
+        throw ApiException(message: 'দোকান পাওয়া যায়নি। দোকান সেটআপ করুন।');
       }
-
-      throw ApiException(
-        message: 'Failed to get shop',
-        statusCode: response.statusCode,
-      );
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final data = e.response!.data;
-        if (data is Map<String, dynamic>) {
-          final message = data['message'] as String? ?? 'Failed to get shop';
-          throw ApiException(
-            message: message,
-            statusCode: e.response!.statusCode,
-          );
-        }
-      }
-      throw ApiException(
-        message: e.message ?? 'Network error',
-        statusCode: e.response?.statusCode,
-      );
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
-      );
+      return _toShopModel(snapshot);
+    } on ApiException {
+      rethrow;
+    } catch (error) {
+      throw _mapError(error, fallback: 'দোকান তথ্য লোড করা যায়নি');
     }
   }
 
-  /// Check if user has shop
+  /// Whether the signed-in user has completed shop setup.
   Future<bool> checkShop() async {
     try {
-      final headers = await _getAuthHeaders();
-
-      final response = await _dio.get<dynamic>(
-        ApiConstants.checkShop,
-        options: Options(headers: headers),
-      );
-
-      if (response.statusCode == 200) {
-        final apiResponse = ApiResponse.fromJson(
-          response.data as Map<String, dynamic>,
-          (json) => json,
-        );
-
-        final data = apiResponse.data as Map<String, dynamic>;
-        return data['hasShop'] as bool;
-      }
-
-      return false;
-    } catch (e) {
-      // If any error, assume no shop
+      final snapshot = await _shopRef.get();
+      return snapshot.exists && snapshot.data()?['setup_complete'] == true;
+    } catch (_) {
       return false;
     }
   }
 
-  /// Update shop
+  /// Updates the shop's editable fields.
   Future<ShopModel> updateShop({
-    required int shopId,
     String? shopName,
     String? address,
     String? phone,
     String? currency,
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final fields = <String, dynamic>{};
+      if (shopName != null) fields['shop_name'] = shopName.trim();
+      if (address != null) fields['address'] = address.trim();
+      if (phone != null) fields['phone'] = phone.trim();
+      if (currency != null) fields['currency'] = currency;
+      if (fields.isEmpty) return await getMyShop();
 
-      final data = <String, dynamic>{};
-      if (shopName != null) data['shop_name'] = shopName;
-      if (address != null) data['address'] = address;
-      if (phone != null) data['phone'] = phone;
-      if (currency != null) data['currency'] = currency;
+      fields['updated_at'] = Timestamp.fromDate(DateTime.now().toUtc());
+      await _shopRef.set(fields, SetOptions(merge: true));
 
-      final response = await _dio.put<dynamic>(
-        ApiConstants.shopById(shopId),
-        options: Options(headers: headers),
-        data: data,
-      );
-
-      if (response.statusCode == 200) {
-        final apiResponse = ApiResponse.fromJson(
-          response.data as Map<String, dynamic>,
-          (json) => json,
-        );
-
-        final shopData = apiResponse.data as Map<String, dynamic>;
-        return ShopModel.fromJson(shopData['shop'] as Map<String, dynamic>);
-      }
-
-      throw ApiException(
-        message: 'Failed to update shop',
-        statusCode: response.statusCode,
-      );
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final data = e.response!.data;
-        if (data is Map<String, dynamic>) {
-          final message = data['message'] as String? ?? 'Failed to update shop';
-          throw ApiException(
-            message: message,
-            statusCode: e.response!.statusCode,
-          );
-        }
-      }
-      throw ApiException(
-        message: e.message ?? 'Network error',
-        statusCode: e.response?.statusCode,
-      );
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
-      );
+      final snapshot = await _shopRef.get();
+      return _toShopModel(snapshot);
+    } on ApiException {
+      rethrow;
+    } catch (error) {
+      throw _mapError(error, fallback: 'দোকান আপডেট করা যায়নি');
     }
   }
 
-  /// Delete shop
-  Future<void> deleteShop(int shopId) async {
+  /// Deletes the shop record (and clears the denormalised `has_shop` flag).
+  Future<void> deleteShop() async {
     try {
-      final headers = await _getAuthHeaders();
-
-      final response = await _dio.delete<dynamic>(
-        ApiConstants.shopById(shopId),
-        options: Options(headers: headers),
+      final uid = _uid;
+      final batch = _firestore.batch();
+      batch.delete(_shopRef);
+      batch.set(
+        _firestore.collection('users').doc(uid),
+        {'has_shop': false},
+        SetOptions(merge: true),
       );
-
-      if (response.statusCode != 200) {
-        throw ApiException(
-          message: 'Failed to delete shop',
-          statusCode: response.statusCode,
-        );
-      }
-    } on DioException catch (e) {
-      if (e.response != null) {
-        final data = e.response!.data;
-        if (data is Map<String, dynamic>) {
-          final message = data['message'] as String? ?? 'Failed to delete shop';
-          throw ApiException(
-            message: message,
-            statusCode: e.response!.statusCode,
-          );
-        }
-      }
-      throw ApiException(
-        message: e.message ?? 'Network error',
-        statusCode: e.response?.statusCode,
-      );
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
-      );
+      await batch.commit();
+    } on ApiException {
+      rethrow;
+    } catch (error) {
+      throw _mapError(error, fallback: 'দোকান মুছতে সমস্যা হয়েছে');
     }
+  }
+
+  ShopModel _toShopModel(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+    final data = snapshot.data() ?? <String, dynamic>{};
+    return ShopModel(
+      id: _stableNumericId(snapshot.id),
+      ownerId: _stableNumericId(snapshot.id),
+      shopName: (data['shop_name'] as String?) ?? '',
+      address: (data['address'] as String?) ?? '',
+      phone: (data['phone'] as String?) ?? '',
+      currency: (data['currency'] as String?) ?? 'BDT',
+      createdAt: _toDate(data['created_at']) ?? DateTime.now(),
+      updatedAt: _toDate(data['updated_at']) ?? DateTime.now(),
+    );
+  }
+
+  DateTime? _toDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  ApiException _mapError(Object error, {required String fallback}) {
+    if (error is FirebaseException) {
+      return ApiException(message: error.message ?? fallback);
+    }
+    return ApiException(message: fallback);
+  }
+
+  /// Deterministic FNV-1a hash so the same UID maps to the same int id,
+  /// matching the mapping used in `auth_provider.dart`.
+  int _stableNumericId(String value) {
+    var hash = 0x811c9dc5;
+    for (final byte in utf8.encode(value)) {
+      hash = ((hash ^ byte) * 0x01000193) & 0x7fffffff;
+    }
+    return hash;
   }
 }
