@@ -279,6 +279,33 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                         ],
                                       ],
                                     ),
+                                    // Task 4 — Restock badge
+                                    if (product.isLowStock) ...[
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.refresh_rounded,
+                                                size: 12, color: Colors.orange),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'রিস্টক করুন',
+                                              style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.orange,
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 trailing: const Icon(Icons.chevron_right),

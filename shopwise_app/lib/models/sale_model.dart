@@ -1,14 +1,22 @@
-/// Invoice returned after the backend processes a sale.
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Invoice returned after the backend (or Firestore) processes a sale.
 class SaleModel {
   final int id;
   final int shopId;
   final String invoiceNumber;
+  /// Firestore document id of this invoice (`null` for legacy API objects).
+  final String? docId;
   final int? customerId;
+  /// Firestore document id of the customer who has a baki (due amount).
+  final String? customerDocId;
+  final String? customerName;
   final double totalAmount;
   final double discount;
   final double paidAmount;
   final double dueAmount;
   final String status;
+  final String paymentMethod;
   final DateTime? createdAt;
   final List<SaleItemModel> items;
   final List<SalePaymentModel> payments;
@@ -17,12 +25,16 @@ class SaleModel {
     required this.id,
     required this.shopId,
     required this.invoiceNumber,
+    this.docId,
     this.customerId,
+    this.customerDocId,
+    this.customerName,
     required this.totalAmount,
     required this.discount,
     required this.paidAmount,
     required this.dueAmount,
     required this.status,
+    this.paymentMethod = 'cash',
     this.createdAt,
     this.items = const [],
     this.payments = const [],
@@ -39,10 +51,55 @@ class SaleModel {
         paidAmount: _toDouble(json['paid_amount']),
         dueAmount: _toDouble(json['due_amount']),
         status: json['status']?.toString() ?? 'completed',
+        paymentMethod: json['payment_method']?.toString() ?? 'cash',
         createdAt: _toDateTime(json['created_at']),
         items: _mapList(json['items'], SaleItemModel.fromJson),
         payments: _mapList(json['payments'], SalePaymentModel.fromJson),
       );
+
+  /// Builds a [SaleModel] from a Firestore invoice document.
+  factory SaleModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    int shopIntId,
+  ) {
+    final data = doc.data() ?? <String, dynamic>{};
+    final rawItems = data['items'];
+    final items = <SaleItemModel>[];
+    if (rawItems is List) {
+      for (final raw in rawItems) {
+        if (raw is! Map) continue;
+        items.add(SaleItemModel(
+          productId: _stableId(raw['product_id']?.toString() ?? ''),
+          productName: raw['product_name']?.toString(),
+          quantity: _toDouble(raw['quantity']),
+          unitPrice: _toDouble(raw['unit_price']),
+          totalPrice: _toDouble(raw['total_price']),
+        ));
+      }
+    }
+    final createdRaw = data['created_at'];
+    final DateTime? createdAt = createdRaw is Timestamp
+        ? createdRaw.toDate()
+        : createdRaw is String
+            ? DateTime.tryParse(createdRaw)
+            : null;
+    return SaleModel(
+      id: _stableId(doc.id),
+      docId: doc.id,
+      shopId: shopIntId,
+      invoiceNumber: (data['invoice_number'] as String?) ?? '',
+      customerDocId: data['customer_id'] as String?,
+      customerName: data['customer_name'] as String?,
+      totalAmount: _toDouble(data['total_amount']),
+      discount: _toDouble(data['discount']),
+      paidAmount: _toDouble(data['paid_amount']),
+      dueAmount: _toDouble(data['due_amount']),
+      status: (data['status'] as String?) ?? 'completed',
+      paymentMethod: (data['payment_method'] as String?) ?? 'cash',
+      createdAt: createdAt,
+      items: items,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -150,4 +207,14 @@ List<T> _mapList<T>(dynamic value, T Function(Map<String, dynamic>) parse) {
       .whereType<Map<String, dynamic>>()
       .map(parse)
       .toList(growable: false);
+}
+
+/// Deterministic FNV-1a hash so the same Firestore doc id always maps to the
+/// same int. Matches the mapping used by every other Firestore-backed model.
+int _stableId(String value) {
+  var hash = 0x811c9dc5;
+  for (final byte in value.codeUnits) {
+    hash = ((hash ^ byte) * 0x01000193) & 0x7fffffff;
+  }
+  return hash;
 }

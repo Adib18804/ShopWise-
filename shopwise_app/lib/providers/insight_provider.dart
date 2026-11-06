@@ -138,10 +138,37 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
     final lastSaleDate = <int, DateTime>{}; // last sale date (within window)
     double todaySalesAmount = 0;
     int todayItemsSold = 0;
+    // Profit: sum(selling_price × qty) – sum(purchase_price × qty) for today.
+    double todayRevenue = 0; // = gross sales (same as todaySalesAmount)
+    double todayCOGS = 0;    // cost of goods sold today (from invoice items)
+
+    // Average purchase price per product (weighted across all active batches).
+    final avgPurchasePriceByProduct = <int, double>{};
+    {
+      final totalQtyByProduct = <int, double>{};
+      final totalCostByProduct = <int, double>{};
+      for (final b in batches) {
+        if (b.quantity <= 0) continue;
+        totalQtyByProduct[b.productId] =
+            (totalQtyByProduct[b.productId] ?? 0) + b.quantity;
+        totalCostByProduct[b.productId] =
+            (totalCostByProduct[b.productId] ?? 0) +
+                b.quantity * b.purchasePrice;
+      }
+      for (final pid in totalQtyByProduct.keys) {
+        final qty = totalQtyByProduct[pid]!;
+        if (qty > 0) {
+          avgPurchasePriceByProduct[pid] = totalCostByProduct[pid]! / qty;
+        }
+      }
+    }
 
     for (final inv in invoices) {
       final isToday = !inv.createdAt.isBefore(todayStart);
-      if (isToday) todaySalesAmount += inv.totalAmount;
+      if (isToday) {
+        todaySalesAmount += inv.totalAmount;
+        todayRevenue += inv.totalAmount;
+      }
       final in7 = inv.createdAt.isAfter(sevenDaysAgo);
       final in30 = inv.createdAt.isAfter(thirtyDaysAgo);
 
@@ -150,15 +177,22 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
         final pid = _stableId(item.productId);
         if (in7) sales7[pid] = (sales7[pid] ?? 0) + item.quantity;
         if (in30) soldInLast30.add(pid);
-        // Keep the most recent sale date per product (invoices arrive newest
-        // first is not guaranteed, so compare explicitly).
         final existing = lastSaleDate[pid];
         if (existing == null || inv.createdAt.isAfter(existing)) {
           lastSaleDate[pid] = inv.createdAt;
         }
-        if (isToday) todayItemsSold += item.quantity.round();
+        if (isToday) {
+          todayItemsSold += item.quantity.round();
+          // COGS: use batch avg purchase price when available; fall back to
+          // the product's default purchase price.
+          final avgCost = avgPurchasePriceByProduct[pid] ??
+              (productsById[pid]?.defaultPurchasePrice ?? 0);
+          todayCOGS += item.quantity * avgCost;
+        }
       }
     }
+
+    final todayEstimatedProfit = todayRevenue - todayCOGS;
 
     // Cost value of stock on hand per product (from batches) + total.
     final batchValueByProduct = <int, double>{};
@@ -298,6 +332,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
       totalStockValue: totalStockValue,
       todaySalesAmount: todaySalesAmount,
       todayItemsSold: todayItemsSold,
+      todayEstimatedProfit: todayEstimatedProfit,
       generatedAt: now,
     );
   }
