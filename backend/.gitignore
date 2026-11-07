@@ -62,3 +62,19 @@ service-account.json
 upload-keystore.jks
 key.properties
 *.jks
+
+
+# Signing Keys
+*.jks
+*.keystore
+
+# Build files
+build/
+
+
+# Ignore build outputs
+shopwise_app/android/build/
+build/
+
+# Ignore random echo files
+shopwise_app/echo
