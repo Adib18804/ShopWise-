@@ -24,72 +24,58 @@ class PreferencesStorage {
   // String methods
   Future<bool> setString(String key, String value) async {
     await init();
-    return await prefs.setString(key, value);
+    return prefs.setString(key, value);
   }
   
-  String? getString(String key) {
-    return prefs.getString(key);
-  }
+  String? getString(String key) => prefs.getString(key);
   
   // Int methods
   Future<bool> setInt(String key, int value) async {
     await init();
-    return await prefs.setInt(key, value);
+    return prefs.setInt(key, value);
   }
   
-  int? getInt(String key) {
-    return prefs.getInt(key);
-  }
+  int? getInt(String key) => prefs.getInt(key);
   
   // Bool methods
   Future<bool> setBool(String key, bool value) async {
     await init();
-    return await prefs.setBool(key, value);
+    return prefs.setBool(key, value);
   }
   
-  bool? getBool(String key) {
-    return prefs.getBool(key);
-  }
+  bool? getBool(String key) => prefs.getBool(key);
   
   // Double methods
   Future<bool> setDouble(String key, double value) async {
     await init();
-    return await prefs.setDouble(key, value);
+    return prefs.setDouble(key, value);
   }
   
-  double? getDouble(String key) {
-    return prefs.getDouble(key);
-  }
+  double? getDouble(String key) => prefs.getDouble(key);
   
   // StringList methods
   Future<bool> setStringList(String key, List<String> value) async {
     await init();
-    return await prefs.setStringList(key, value);
+    return prefs.setStringList(key, value);
   }
   
-  List<String>? getStringList(String key) {
-    return prefs.getStringList(key);
-  }
+  List<String>? getStringList(String key) => prefs.getStringList(key);
   
   // Remove
   Future<bool> remove(String key) async {
     await init();
-    return await prefs.remove(key);
+    return prefs.remove(key);
   }
   
   // Clear all
   Future<bool> clear() async {
     await init();
-    return await prefs.clear();
+    return prefs.clear();
   }
   
   // Contains key
-  bool containsKey(String key) {
-    return prefs.containsKey(key);
-  }
+  bool containsKey(String key) => prefs.containsKey(key);
   
   // Get all keys
-  Set<String> getKeys() {
-    return prefs.getKeys();
-  }
+  Set<String> getKeys() => prefs.getKeys();
 }

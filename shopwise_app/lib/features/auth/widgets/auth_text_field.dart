@@ -3,6 +3,17 @@ import '../../../core/theme/app_colors.dart';
 
 /// Custom text field for authentication forms
 class AuthTextField extends StatelessWidget {
+
+  const AuthTextField({
+    required this.controller, required this.label, required this.hint, super.key,
+    this.keyboardType = TextInputType.text,
+    this.obscureText = false,
+    this.prefixIcon,
+    this.suffixIcon,
+    this.validator,
+    this.enabled = true,
+    this.maxLines = 1,
+  });
   final TextEditingController controller;
   final String label;
   final String hint;
@@ -14,23 +25,8 @@ class AuthTextField extends StatelessWidget {
   final bool enabled;
   final int maxLines;
 
-  const AuthTextField({
-    super.key,
-    required this.controller,
-    required this.label,
-    required this.hint,
-    this.keyboardType = TextInputType.text,
-    this.obscureText = false,
-    this.prefixIcon,
-    this.suffixIcon,
-    this.validator,
-    this.enabled = true,
-    this.maxLines = 1,
-  });
-
   @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget build(BuildContext context) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -87,5 +83,17 @@ class AuthTextField extends StatelessWidget {
         ),
       ],
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<TextEditingController>('controller', controller));
+    properties.add(StringProperty('label', label));
+    properties.add(StringProperty('hint', hint));
+    properties.add(DiagnosticsProperty<TextInputType>('keyboardType', keyboardType));
+    properties.add(DiagnosticsProperty<bool>('obscureText', obscureText));
+    properties.add(ObjectFlagProperty<String? Function(String?)?>.has('validator', validator));
+    properties.add(DiagnosticsProperty<bool>('enabled', enabled));
+    properties.add(IntProperty('maxLines', maxLines));
   }
 }

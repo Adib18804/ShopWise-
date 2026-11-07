@@ -36,7 +36,7 @@ class CategoryService {
           'description': 'ডিফল্ট ক্যাটাগরি',
           'created_at': Timestamp.fromDate(now),
           'updated_at': Timestamp.fromDate(now),
-        }, SetOptions(merge: true));
+        }, SetOptions(merge: true),);
         snap = await _ref.get();
       }
       return snap.docs

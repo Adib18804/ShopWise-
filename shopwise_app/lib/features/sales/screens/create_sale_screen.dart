@@ -9,8 +9,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/product_model.dart';
 import '../../../models/sale_request.dart';
+import '../../../models/shop_model.dart';
+import '../../../providers/language_provider.dart';
 import '../../../providers/product_provider.dart';
 import '../../../providers/sales_provider.dart';
+import '../../../providers/shop_provider.dart';
 
 class CreateSaleScreen extends ConsumerStatefulWidget {
   const CreateSaleScreen({super.key});
@@ -28,13 +31,14 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
   String _searchQuery = '';
   String _paymentMethod = 'cash';
   bool _paidAmountEdited = false;
+  DateTime? _returnDate;
 
   int get _subtotalCents => _cart.values.fold<int>(
         0,
         (sum, line) =>
             sum +
             _lineTotalCents(
-                line.quantityCents, _toCents(line.product.sellingPrice)),
+                line.quantityCents, _toCents(line.product.sellingPrice),),
       );
 
   int get _discountCents => _parseCents(_discountController.text) ?? 0;
@@ -86,11 +90,9 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
 
   List<ProductModel> _visibleProducts(List<ProductModel> products) {
     if (_searchQuery.isEmpty) return products;
-    return products.where((product) {
-      return product.name.toLowerCase().contains(_searchQuery) ||
+    return products.where((product) => product.name.toLowerCase().contains(_searchQuery) ||
           (product.sku?.toLowerCase().contains(_searchQuery) ?? false) ||
-          (product.barcode?.toLowerCase().contains(_searchQuery) ?? false);
-    }).toList(growable: false);
+          (product.barcode?.toLowerCase().contains(_searchQuery) ?? false),).toList(growable: false);
   }
 
   void _addProduct(ProductModel product) {
@@ -98,13 +100,13 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
     final available = _toQuantityCents(product.totalStock);
     if (current + 100 > available) {
       _showMessage(
-          '\u098f\u0987 \u09aa\u09a3\u09cd\u09af\u09c7\u09b0 \u09aa\u09b0\u09cd\u09af\u09be\u09aa\u09cd\u09a4 \u09b8\u09cd\u099f\u0995 \u09a8\u09c7\u0987');
+          '\u098f\u0987 \u09aa\u09a3\u09cd\u09af\u09c7\u09b0 \u09aa\u09b0\u09cd\u09af\u09be\u09aa\u09cd\u09a4 \u09b8\u09cd\u099f\u0995 \u09a8\u09c7\u0987',);
       return;
     }
     setState(() => _cart[product.id] = _SaleCartLine(
           product: product,
           quantityCents: current + 100,
-        ));
+        ),);
     _syncDefaultPaidAmount();
   }
 
@@ -114,11 +116,11 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
       setState(() => _cart.remove(line.product.id));
     } else if (next > _toQuantityCents(line.product.totalStock)) {
       _showMessage(
-          '\u09b8\u09cd\u099f\u0995\u09c7\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf \u0995\u09b0\u09be \u09af\u09be\u09ac\u09c7 \u09a8\u09be');
+          '\u09b8\u09cd\u099f\u0995\u09c7\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf \u0995\u09b0\u09be \u09af\u09be\u09ac\u09c7 \u09a8\u09be',);
       return;
     } else {
       setState(
-          () => _cart[line.product.id] = line.copyWith(quantityCents: next));
+          () => _cart[line.product.id] = line.copyWith(quantityCents: next),);
     }
     _syncDefaultPaidAmount();
   }
@@ -130,17 +132,17 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text(
-            '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09aa\u09b0\u09bf\u09ac\u09b0\u09cd\u09a4\u09a8 \u0995\u09b0\u09c1\u09a8'),
+            '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09aa\u09b0\u09bf\u09ac\u09b0\u09cd\u09a4\u09a8 \u0995\u09b0\u09c1\u09a8',),
         content: TextField(
           controller: controller,
           autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
           ],
           decoration: InputDecoration(
               labelText:
-                  '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 (${line.product.unit})'),
+                  '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 (${line.product.unit})',),
         ),
         actions: [
           TextButton(
@@ -160,16 +162,16 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
     final quantityCents = _toQuantityCents(quantity);
     if (quantityCents <= 0) {
       _showMessage(
-          '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b6\u09c2\u09a8\u09cd\u09af\u09c7\u09b0 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09b9\u09ac\u09c7');
+          '\u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b6\u09c2\u09a8\u09cd\u09af\u09c7\u09b0 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09b9\u09ac\u09c7',);
       return;
     }
     if (quantityCents > _toQuantityCents(line.product.totalStock)) {
       _showMessage(
-          '\u09b8\u09cd\u099f\u0995\u09c7\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf \u0995\u09b0\u09be \u09af\u09be\u09ac\u09c7 \u09a8\u09be');
+          '\u09b8\u09cd\u099f\u0995\u09c7\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf \u0995\u09b0\u09be \u09af\u09be\u09ac\u09c7 \u09a8\u09be',);
       return;
     }
     setState(() =>
-        _cart[line.product.id] = line.copyWith(quantityCents: quantityCents));
+        _cart[line.product.id] = line.copyWith(quantityCents: quantityCents),);
     _syncDefaultPaidAmount();
   }
 
@@ -178,32 +180,38 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
   }
 
   Future<void> _confirmSale() async {
+    final isLibrary = ref.read(shopTypeProvider) == ShopType.library;
     if (_cart.isEmpty) {
       _showMessage(
-          '\u09ac\u09bf\u0995\u09cd\u09b0\u09bf\u09b0 \u099c\u09a8\u09cd\u09af \u0985\u09a8\u09cd\u09a4\u09a4 \u098f\u0995\u099f\u09bf \u09aa\u09a3\u09cd\u09af \u09af\u09cb\u0997 \u0995\u09b0\u09c1\u09a8');
+          '\u09ac\u09bf\u0995\u09cd\u09b0\u09bf\u09b0 \u099c\u09a8\u09cd\u09af \u0985\u09a8\u09cd\u09a4\u09a4 \u098f\u0995\u099f\u09bf \u09aa\u09a3\u09cd\u09af \u09af\u09cb\u0997 \u0995\u09b0\u09c1\u09a8',);
+      return;
+    }
+    if (isLibrary && _returnDate == null) {
+      final isBn = ref.read(appLocalizationsProvider).isBn;
+      _showMessage(isBn ? 'ফেরতের তারিখ নির্বাচন করুন' : 'Select a return date');
       return;
     }
     final discountCents = _parseCents(_discountController.text);
     final paidCents = _parseCents(_paidController.text);
     if (discountCents == null || discountCents < 0) {
       _showMessage(
-          '\u09b8\u09a0\u09bf\u0995 \u099b\u09be\u09dc\u09c7\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b2\u09bf\u0996\u09c1\u09a8');
+          '\u09b8\u09a0\u09bf\u0995 \u099b\u09be\u09dc\u09c7\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b2\u09bf\u0996\u09c1\u09a8',);
       return;
     }
     if (discountCents > _subtotalCents) {
       _showMessage(
-          '\u099b\u09be\u09dc \u09ae\u09cb\u099f \u09ae\u09c2\u09b2\u09cd\u09af\u09c7\u09b0 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09aa\u09be\u09b0\u09c7 \u09a8\u09be');
+          '\u099b\u09be\u09dc \u09ae\u09cb\u099f \u09ae\u09c2\u09b2\u09cd\u09af\u09c7\u09b0 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09aa\u09be\u09b0\u09c7 \u09a8\u09be',);
       return;
     }
     if (paidCents == null || paidCents < 0) {
       _showMessage(
-          '\u09b8\u09a0\u09bf\u0995 \u099c\u09ae\u09be\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b2\u09bf\u0996\u09c1\u09a8');
+          '\u09b8\u09a0\u09bf\u0995 \u099c\u09ae\u09be\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09b2\u09bf\u0996\u09c1\u09a8',);
       return;
     }
     final payableCents = _subtotalCents - discountCents;
     if (paidCents > payableCents) {
       _showMessage(
-          '\u099c\u09ae\u09be\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ae\u09cb\u099f \u09aa\u09cd\u09b0\u09a6\u09c7\u09df \u099f\u09be\u0995\u09be\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09aa\u09be\u09b0\u09c7 \u09a8\u09be');
+          '\u099c\u09ae\u09be\u09b0 \u09aa\u09b0\u09bf\u09ae\u09be\u09a3 \u09ae\u09cb\u099f \u09aa\u09cd\u09b0\u09a6\u09c7\u09df \u099f\u09be\u0995\u09be\u09b0 \u099a\u09c7\u09df\u09c7 \u09ac\u09c7\u09b6\u09bf \u09b9\u09a4\u09c7 \u09aa\u09be\u09b0\u09c7 \u09a8\u09be',);
       return;
     }
 
@@ -213,15 +221,16 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                 productId: line.product.id,
                 quantity: line.quantityCents / 100,
                 unitPrice: line.product.sellingPrice,
-              ))
+              ),)
           .toList(growable: false),
       discount: discountCents / 100,
       payments: paidCents == 0
           ? const []
           : [
               SaleRequestPayment(
-                  amount: paidCents / 100, paymentMethod: _paymentMethod)
+                  amount: paidCents / 100, paymentMethod: _paymentMethod,),
             ],
+      returnDate: isLibrary ? _returnDate : null,
     );
 
     final succeeded =
@@ -229,14 +238,19 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
     if (!mounted) return;
     final result = ref.read(salesProvider);
     if (succeeded) {
+      final isBn = ref.read(appLocalizationsProvider).isBn;
       _showMessage(
-          result.successMessage ??
-              '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09b8\u09ab\u09b2\u09ad\u09be\u09ac\u09c7 \u09b8\u09ae\u09cd\u09aa\u09a8\u09cd\u09a8 \u09b9\u09df\u09c7\u099b\u09c7',
-          isError: false);
+        isLibrary
+            ? (isBn ? 'বই ইস্যু সফল হয়েছে' : 'Book issued successfully')
+            : result.successMessage ??
+                '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09b8\u09ab\u09b2\u09ad\u09be\u09ac\u09c7 \u09b8\u09ae\u09cd\u09aa\u09a8\u09cd\u09a8 \u09b9\u09df\u09c7\u099b\u09c7',
+        isError: false,
+      );
       setState(() {
         _cart.clear();
         _discountController.text = '0.00';
         _paidAmountEdited = false;
+        _returnDate = null;
       });
       _syncDefaultPaidAmount();
       ref.read(productProvider.notifier).refreshProducts();
@@ -244,9 +258,21 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
     } else {
       _showMessage(
           result.error ??
-              '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09b8\u09ae\u09cd\u09aa\u09a8\u09cd\u09a8 \u0995\u09b0\u09be \u09af\u09be\u09df\u09a8\u09bf',
-          isError: true);
+              '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09b8\u09ae\u09cd\u09aa\u09a8\u09cd\u09a8 \u0995\u09b0\u09be \u09af\u09be\u09df\u09a8\u09bf',);
     }
+  }
+
+  Future<void> _chooseReturnDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final isBn = ref.read(appLocalizationsProvider).isBn;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _returnDate ?? today.add(const Duration(days: 14)),
+      firstDate: today,
+      lastDate: DateTime(today.year + 3),
+      helpText: isBn ? 'ফেরতের তারিখ নির্বাচন করুন' : 'Select return date',
+    );
+    if (picked != null && mounted) setState(() => _returnDate = picked);
   }
 
   void _showMessage(String message, {bool isError = true}) {
@@ -255,19 +281,24 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
       ..showSnackBar(SnackBar(
         content: Text(message),
         backgroundColor: isError ? AppColors.error : null,
-      ));
+      ),);
   }
 
   @override
   Widget build(BuildContext context) {
     final productState = ref.watch(productProvider);
     final salesState = ref.watch(salesProvider);
+    final shopType = ref.watch(shopTypeProvider);
+    final isLibrary = shopType == ShopType.library;
+    final isBn = ref.watch(appLocalizationsProvider).isBn;
+    final showFefo = shopType == ShopType.general || shopType == ShopType.pharmacy;
     final products = _visibleProducts(productState.products);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-            '\u09a8\u09a4\u09c1\u09a8 \u09ac\u09bf\u0995\u09cd\u09b0\u09df'),
+        title: Text(isLibrary
+            ? (isBn ? 'বই ইস্যু করুন' : 'Issue Book')
+            : (isBn ? 'নতুন বিক্রয়' : 'New Sale'),),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
@@ -278,7 +309,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _sectionTitle(
-                  '\u09aa\u09a3\u09cd\u09af \u0996\u09c1\u0981\u099c\u09c1\u09a8'),
+                  '\u09aa\u09a3\u09cd\u09af \u0996\u09c1\u0981\u099c\u09c1\u09a8',),
               const SizedBox(height: 8),
               TextField(
                 controller: _searchController,
@@ -298,11 +329,12 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                           icon: const Icon(Icons.close),
                         ),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),),
                 ),
               ),
               const SizedBox(height: 8),
-              _buildProducts(productState, products),
+              _buildProducts(productState, products,
+                  showFefo: showFefo, isLibrary: isLibrary, isBn: isBn,),
               const SizedBox(height: 18),
               _sectionTitle('\u0995\u09be\u09b0\u09cd\u099f (${_cart.length})'),
               const SizedBox(height: 8),
@@ -312,6 +344,20 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                 ..._cart.values.map(_cartItem),
               const SizedBox(height: 12),
               _buildSummary(),
+              if (isLibrary) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.event_available, color: AppColors.primary),
+                    title: Text(isBn ? 'ফেরতের তারিখ *' : 'Return date *'),
+                    subtitle: Text(_returnDate == null
+                        ? (isBn ? 'তারিখ নির্বাচন করুন' : 'Choose a date')
+                        : _formatDate(_returnDate!, isBn),),
+                    trailing: const Icon(Icons.calendar_month),
+                    onTap: salesState.isLoading ? null : _chooseReturnDate,
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               _sectionTitle('\u09aa\u09c7\u09ae\u09c7\u09a8\u09cd\u099f'),
               const SizedBox(height: 8),
@@ -319,7 +365,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
               if (salesState.error != null) ...[
                 const SizedBox(height: 10),
                 Text(salesState.error!,
-                    style: const TextStyle(color: AppColors.error)),
+                    style: const TextStyle(color: AppColors.error),),
               ],
             ],
           ),
@@ -334,9 +380,9 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                  color: AppColors.accent.withOpacity(0.28),
+                  color: AppColors.accent.withValues(alpha: 0.28),
                   blurRadius: 16,
-                  offset: const Offset(0, 7)),
+                  offset: const Offset(0, 7),),
             ],
           ),
           child: Material(
@@ -351,19 +397,21 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                     const SizedBox.square(
                         dimension: 21,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                            strokeWidth: 2, color: Colors.white,),)
                   else
                     const Icon(Icons.point_of_sale_rounded,
-                        color: Colors.white),
+                        color: Colors.white,),
                   const SizedBox(width: 10),
                   Text(
-                    salesState.isLoading
+                    isLibrary
+                        ? (isBn ? 'ইস্যু নিশ্চিত করুন' : 'Confirm Issue')
+                        : salesState.isLoading
                         ? '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09aa\u09cd\u09b0\u0995\u09cd\u09b0\u09bf\u09df\u09be\u09a7\u09c0\u09a8...'
                         : '\u09ac\u09bf\u0995\u09cd\u09b0\u09df \u09a8\u09bf\u09b6\u09cd\u099a\u09bf\u09a4 \u0995\u09b0\u09c1\u09a8',
                     style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white),
+                        color: Colors.white,),
                   ),
                 ],
               ),
@@ -374,10 +422,13 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
     );
   }
 
-  Widget _buildProducts(ProductState state, List<ProductModel> products) {
+  Widget _buildProducts(ProductState state, List<ProductModel> products,
+      {required bool showFefo,
+      required bool isLibrary,
+      required bool isBn,}) {
     if (state.isLoading && state.products.isEmpty) {
       return const SizedBox(
-          height: 150, child: Center(child: CircularProgressIndicator()));
+          height: 150, child: Center(child: CircularProgressIndicator()),);
     }
     if (state.error != null && state.products.isEmpty) {
       return _InfoCard(
@@ -392,7 +443,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
       return const _InfoCard(
           icon: Icons.inventory_2_outlined,
           message:
-              '\u0995\u09cb\u09a8\u09cb \u09aa\u09a3\u09cd\u09af \u09aa\u09be\u0993\u09df\u09be \u09af\u09be\u09df\u09a8\u09bf');
+              '\u0995\u09cb\u09a8\u09cb \u09aa\u09a3\u09cd\u09af \u09aa\u09be\u0993\u09df\u09be \u09af\u09be\u09df\u09a8\u09bf',);
     }
 
     final maxHeight =
@@ -419,6 +470,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
             builder: (ctx, watchRef, _) {
               final docId = product.docId ?? '';
               final fefoAsync = docId.isNotEmpty
+                  && showFefo
                   ? watchRef.watch(_fefoHintProvider(docId))
                   : const AsyncData<DateTime?>(null);
               final earliestExpiry = fefoAsync.valueOrNull;
@@ -432,23 +484,25 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 2),
                     title: Text(product.name,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                        maxLines: 1, overflow: TextOverflow.ellipsis,),
                     subtitle: Text(
-                        '৳${product.sellingPrice.toStringAsFixed(2)} · স্টক ${_formatQuantity(stockCents)} ${product.unit}'),
+                        isLibrary
+                            ? '${product.author ?? (isBn ? 'বই' : 'Book')}${product.isbn == null ? '' : ' · ISBN ${product.isbn}'} · ৳${product.sellingPrice.toStringAsFixed(2)} · ${isBn ? 'স্টক' : 'Stock'} ${_formatQuantity(stockCents)} ${product.unit}'
+                            : '৳${product.sellingPrice.toStringAsFixed(2)} · স্টক ${_formatQuantity(stockCents)} ${product.unit}',),
                     trailing: IconButton.filled(
                       tooltip: 'কার্টে যোগ করুন',
                       style: IconButton.styleFrom(
                           backgroundColor: AppColors.accent,
-                          foregroundColor: Colors.white),
+                          foregroundColor: Colors.white,),
                       onPressed: canAdd ? () => _addProduct(product) : null,
                       icon: const Icon(Icons.add),
                     ),
                   ),
                   // FEFO hint badge — only shown when a dated batch exists.
-                  if (earliestExpiry != null)
+                  if (showFefo && earliestExpiry != null)
                     Padding(
                       padding: const EdgeInsets.only(
-                          left: 6, right: 6, bottom: 4),
+                          left: 6, right: 6, bottom: 4,),
                       child: _FefoBadge(expiryDate: earliestExpiry),
                     ),
                 ],
@@ -462,7 +516,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
 
   Widget _cartItem(_SaleCartLine line) {
     final lineTotal = _lineTotalCents(
-        line.quantityCents, _toCents(line.product.sellingPrice));
+        line.quantityCents, _toCents(line.product.sellingPrice),);
     return Card(
       margin: const EdgeInsets.only(bottom: 9),
       elevation: 2,
@@ -479,10 +533,10 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                   Text(line.product.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                      style: const TextStyle(fontWeight: FontWeight.w600),),
                   const SizedBox(height: 3),
                   Text('\u09F3${_formatMoney(lineTotal)}',
-                      style: const TextStyle(color: AppColors.textSecondary)),
+                      style: const TextStyle(color: AppColors.textSecondary),),
                 ],
               ),
             ),
@@ -499,7 +553,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                 child: Text(
                     '${_formatQuantity(line.quantityCents)} ${line.product.unit}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                    style: const TextStyle(fontWeight: FontWeight.w600),),
               ),
             ),
             IconButton(
@@ -529,7 +583,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
           child: Column(
             children: [
               _summaryRow('\u09b8\u09be\u09ac\u099f\u09cb\u099f\u09be\u09b2',
-                  '\u09F3${_formatMoney(_subtotalCents)}'),
+                  '\u09F3${_formatMoney(_subtotalCents)}',),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -555,7 +609,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
               _summaryRow(
                   '\u09ae\u09cb\u099f \u09aa\u09cd\u09b0\u09a6\u09c7\u09df',
                   '\u09F3${_formatMoney(_payableCents)}',
-                  bold: true),
+                  bold: true,),
             ],
           ),
         ),
@@ -567,7 +621,7 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
           child: Column(
             children: [
               DropdownButtonFormField<String>(
-                value: _paymentMethod,
+                initialValue: _paymentMethod,
                 decoration: const InputDecoration(
                   labelText:
                       '\u09aa\u09c7\u09ae\u09c7\u09a8\u09cd\u099f \u09aa\u09a6\u09cd\u09a7\u09a4\u09bf',
@@ -576,13 +630,13 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
                 ),
                 items: const [
                   DropdownMenuItem(
-                      value: 'cash', child: Text('\u09a8\u0997\u09a6 (Cash)')),
+                      value: 'cash', child: Text('\u09a8\u0997\u09a6 (Cash)'),),
                   DropdownMenuItem(
                       value: 'bkash',
-                      child: Text('\u09ac\u09bf\u0995\u09be\u09b6 (Bkash)')),
+                      child: Text('\u09ac\u09bf\u0995\u09be\u09b6 (Bkash)'),),
                   DropdownMenuItem(
                       value: 'nagad',
-                      child: Text('\u09a8\u0997\u09a6 (Nagad)')),
+                      child: Text('\u09a8\u0997\u09a6 (Nagad)'),),
                 ],
                 onChanged: (value) {
                   if (value != null) setState(() => _paymentMethod = value);
@@ -611,11 +665,11 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
         children: [
           Text(label,
               style:
-                  bold ? const TextStyle(fontWeight: FontWeight.bold) : null),
+                  bold ? const TextStyle(fontWeight: FontWeight.bold) : null,),
           Text(value,
               style: bold
                   ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)
-                  : null),
+                  : null,),
         ],
       );
 
@@ -624,15 +678,29 @@ class _CreateSaleScreenState extends ConsumerState<CreateSaleScreen> {
         style: const TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary),
+            color: AppColors.textPrimary,),
       );
+
+  String _formatDate(DateTime date, bool isBn) {
+    var value = '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    if (isBn) {
+      const latin = '0123456789';
+      const bengali = '০১২৩৪৫৬৭৮৯';
+      for (var i = 0; i < latin.length; i++) {
+        value = value.replaceAll(latin[i], bengali[i]);
+      }
+    }
+    return value;
+  }
 }
 
 class _SaleCartLine {
-  final ProductModel product;
-  final int quantityCents;
 
   const _SaleCartLine({required this.product, required this.quantityCents});
+  final ProductModel product;
+  final int quantityCents;
 
   _SaleCartLine copyWith({int? quantityCents}) => _SaleCartLine(
         product: product,
@@ -641,16 +709,16 @@ class _SaleCartLine {
 }
 
 class _InfoCard extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
 
   const _InfoCard(
       {required this.icon,
       required this.message,
       this.actionLabel,
-      this.onAction});
+      this.onAction,});
+  final IconData icon;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -673,6 +741,15 @@ class _InfoCard extends StatelessWidget {
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(StringProperty('message', message));
+    properties.add(StringProperty('actionLabel', actionLabel));
+    properties.add(ObjectFlagProperty<VoidCallback?>.has('onAction', onAction));
+  }
 }
 
 // =============================================================================
@@ -681,8 +758,8 @@ class _InfoCard extends StatelessWidget {
 
 /// Shows a compact orange hint strip: "এই ব্যাচটি আগে বিক্রি করুন (মেয়াদ: DD/MM/YY)"
 class _FefoBadge extends StatelessWidget {
-  final DateTime expiryDate;
   const _FefoBadge({required this.expiryDate});
+  final DateTime expiryDate;
 
   @override
   Widget build(BuildContext context) {
@@ -692,15 +769,15 @@ class _FefoBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.accent.withOpacity(0.1),
+        color: AppColors.accent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.accent.withOpacity(0.35)),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.schedule_rounded,
-              size: 12, color: AppColors.accent),
+              size: 12, color: AppColors.accent,),
           const SizedBox(width: 4),
           Text(
             'এই ব্যাচটি আগে বিক্রি করুন (মেয়াদ: $dateStr)',
@@ -713,6 +790,12 @@ class _FefoBadge extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<DateTime>('expiryDate', expiryDate));
   }
 }
 

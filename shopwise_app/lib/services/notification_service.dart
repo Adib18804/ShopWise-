@@ -71,7 +71,6 @@ class NotificationService {
     importance: Importance.high,
     priority: Priority.high,
     icon: '@mipmap/ic_launcher',
-    playSound: true,
   );
 
   Future<void> _show({

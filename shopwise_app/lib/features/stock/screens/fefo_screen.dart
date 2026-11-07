@@ -4,12 +4,19 @@ import '../../../core/theme/app_colors.dart';
 import '../../../providers/batch_provider.dart';
 
 class FefoScreen extends ConsumerStatefulWidget {
+  const FefoScreen({required this.productId, required this.productName, super.key});
   final int productId;
   final String productName;
-  const FefoScreen({super.key, required this.productId, required this.productName});
 
   @override
   ConsumerState<FefoScreen> createState() => _FefoScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('productId', productId));
+    properties.add(StringProperty('productName', productName));
+  }
 }
 
 class _FefoScreenState extends ConsumerState<FefoScreen> {
@@ -52,7 +59,7 @@ class _FefoScreenState extends ConsumerState<FefoScreen> {
                     margin: const EdgeInsets.only(top: 12),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: priority == 1 ? Colors.deepOrange.withOpacity(0.12) : AppColors.primary.withOpacity(0.1),
+                        backgroundColor: priority == 1 ? Colors.deepOrange.withValues(alpha: 0.12) : AppColors.primary.withValues(alpha: 0.1),
                         child: Text('$priority', style: TextStyle(color: priority == 1 ? Colors.deepOrange : AppColors.primary, fontWeight: FontWeight.bold)),
                       ),
                       title: Text(batch['batch_number'] as String? ?? 'ব্যাচ #${batch['batch_id']}'),

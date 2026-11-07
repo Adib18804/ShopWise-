@@ -1,36 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BatchModel {
-  final int id;
-  /// The Firestore document id of this batch. Populated by
-  /// [BatchModel.fromFirestore]; `null` for legacy API-parsed batches.
-  final String? docId;
-  final int productId;
-  final String? batchNumber;
-  final DateTime purchaseDate;
-  final DateTime? expiryDate;
-  final double quantity;
-  final double purchasePrice;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? productName;
-  final String? unit;
-  final int? shopId;
-  final String? status;
-  final int? daysUntilExpiry;
-  final bool isActive;
 
   const BatchModel({
     required this.id,
-    this.docId,
-    required this.productId,
+    required this.productId, required this.purchaseDate, required this.quantity, required this.purchasePrice, required this.createdAt, required this.updatedAt, this.docId,
     this.batchNumber,
-    required this.purchaseDate,
     this.expiryDate,
-    required this.quantity,
-    required this.purchasePrice,
-    required this.createdAt,
-    required this.updatedAt,
     this.productName,
     this.unit,
     this.shopId,
@@ -86,12 +62,30 @@ class BatchModel {
       isActive: data['is_active'] == null || data['is_active'] == true,
     );
   }
+  final int id;
+  /// The Firestore document id of this batch. Populated by
+  /// [BatchModel.fromFirestore]; `null` for legacy API-parsed batches.
+  final String? docId;
+  final int productId;
+  final String? batchNumber;
+  final DateTime purchaseDate;
+  final DateTime? expiryDate;
+  final double quantity;
+  final double purchasePrice;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? productName;
+  final String? unit;
+  final int? shopId;
+  final String? status;
+  final int? daysUntilExpiry;
+  final bool isActive;
 
   static double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) return 0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    return 0;
   }
 
   /// Firestore-aware date-only parser. Accepts [Timestamp], [DateTime], or a

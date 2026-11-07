@@ -109,15 +109,15 @@ class _SaleHistoryScreenState extends ConsumerState<SaleHistoryScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _InvoiceCard extends StatelessWidget {
-  final SaleModel invoice;
-  final AppLocalizations l;
-  final VoidCallback onTap;
 
   const _InvoiceCard({
     required this.invoice,
     required this.l,
     required this.onTap,
   });
+  final SaleModel invoice;
+  final AppLocalizations l;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -139,8 +139,8 @@ class _InvoiceCard extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: hasDue
-                      ? AppColors.riskMedium.withOpacity(0.12)
-                      : AppColors.primary.withOpacity(0.1),
+                      ? AppColors.riskMedium.withValues(alpha: 0.12)
+                      : AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -175,12 +175,12 @@ class _InvoiceCard extends StatelessWidget {
                       Row(
                         children: [
                           const Icon(Icons.person_outline,
-                              size: 13, color: AppColors.textSecondary),
+                              size: 13, color: AppColors.textSecondary,),
                           const SizedBox(width: 4),
                           Text(
                             invoice.customerName!,
                             style: const TextStyle(
-                                fontSize: 12, color: AppColors.textSecondary),
+                                fontSize: 12, color: AppColors.textSecondary,),
                           ),
                         ],
                       ),
@@ -203,9 +203,9 @@ class _InvoiceCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                          horizontal: 8, vertical: 2,),
                       decoration: BoxDecoration(
-                        color: AppColors.riskMedium.withOpacity(0.14),
+                        color: AppColors.riskMedium.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -228,16 +228,24 @@ class _InvoiceCard extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SaleModel>('invoice', invoice));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Modal bottom-sheet showing the full detail of a single invoice.
 class _InvoiceDetailSheet extends StatelessWidget {
-  final SaleModel invoice;
-  final AppLocalizations l;
 
   const _InvoiceDetailSheet({required this.invoice, required this.l});
+  final SaleModel invoice;
+  final AppLocalizations l;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +292,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
                         Text(
                           l.formatDateTime(invoice.createdAt),
                           style: const TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary),
+                              fontSize: 12, color: AppColors.textSecondary,),
                         ),
                     ],
                   ),
@@ -345,7 +353,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
                             '${l.formatQty(item.quantity)} × ${l.formatAmount(item.unitPrice)}',
                             style: const TextStyle(
                                 fontSize: 13,
-                                color: AppColors.textSecondary),
+                                color: AppColors.textSecondary,),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -364,7 +372,7 @@ class _InvoiceDetailSheet extends StatelessWidget {
                   _TotalRow(
                     label: l.isBn ? 'সাবটোটাল' : 'Subtotal',
                     value: l.formatAmount(
-                        invoice.totalAmount + invoice.discount),
+                        invoice.totalAmount + invoice.discount,),
                   ),
                   if (invoice.discount > 0)
                     _TotalRow(
@@ -411,14 +419,21 @@ class _InvoiceDetailSheet extends StatelessWidget {
         return method;
     }
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SaleModel>('invoice', invoice));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 class _Row extends StatelessWidget {
+
+  const _Row({required this.icon, required this.label, required this.value});
   final IconData icon;
   final String label;
   final String value;
-
-  const _Row({required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) => Row(
@@ -427,19 +442,23 @@ class _Row extends StatelessWidget {
           const SizedBox(width: 8),
           Text('$label: ',
               style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 13)),
+                  color: AppColors.textSecondary, fontSize: 13,),),
           Text(value,
               style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 13)),
+                  fontWeight: FontWeight.w600, fontSize: 13,),),
         ],
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(StringProperty('label', label));
+    properties.add(StringProperty('value', value));
+  }
 }
 
 class _TotalRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool bold;
-  final Color? valueColor;
 
   const _TotalRow({
     required this.label,
@@ -447,6 +466,10 @@ class _TotalRow extends StatelessWidget {
     this.bold = false,
     this.valueColor,
   });
+  final String label;
+  final String value;
+  final bool bold;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -473,13 +496,22 @@ class _TotalRow extends StatelessWidget {
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('label', label));
+    properties.add(StringProperty('value', value));
+    properties.add(DiagnosticsProperty<bool>('bold', bold));
+    properties.add(ColorProperty('valueColor', valueColor));
+  }
 }
 
 class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
 
   const _ErrorView({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -501,4 +533,11 @@ class _ErrorView extends StatelessWidget {
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('message', message));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onRetry', onRetry));
+  }
 }

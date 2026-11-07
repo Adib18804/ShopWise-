@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/auth_provider.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../widgets/auth_text_field.dart';
-import '../widgets/auth_button.dart';
-import 'register_screen.dart';
-import '../../shop/screens/shop_setup_screen.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../widgets/layout/main_shell.dart';
+import '../../shop/screens/shop_setup_screen.dart';
+import '../widgets/auth_button.dart';
+import '../widgets/auth_text_field.dart';
+import 'register_screen.dart';
 
 /// Login screen
 class LoginScreen extends ConsumerStatefulWidget {
@@ -45,7 +46,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // Check if user has shop
       final user = ref.read(authProvider).user;
       
-      if (user?.hasShop == true) {
+      // hasShop is false unless Firestore setup is complete; shopType is an
+      // explicit guard so missing shop_type documents always return to setup.
+      if ((user?.hasShop ?? false) && user?.shopType != null) {
         // Navigate to dashboard
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
@@ -88,7 +91,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(

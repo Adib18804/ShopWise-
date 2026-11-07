@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/category_provider.dart';
-import '../../../models/category_model.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../../../features/auth/widgets/auth_text_field.dart';
 import '../../../features/auth/widgets/auth_button.dart';
+import '../../../features/auth/widgets/auth_text_field.dart';
+import '../../../models/category_model.dart';
+import '../../../providers/category_provider.dart';
 
 /// Category form screen (add/edit)
 class CategoryFormScreen extends ConsumerStatefulWidget {
-  final CategoryModel? category;
 
   const CategoryFormScreen({super.key, this.category});
+  final CategoryModel? category;
 
   @override
   ConsumerState<CategoryFormScreen> createState() => _CategoryFormScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<CategoryModel?>('category', category));
+  }
 }
 
 class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
@@ -80,15 +87,14 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(
         title: Text(isEditing ? 'ক্যাটাগরি সম্পাদনা' : 'নতুন ক্যাটাগরি'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
           child: Column(
@@ -99,7 +105,6 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
                 controller: _nameController,
                 label: 'ক্যাটাগরির নাম *',
                 hint: 'যেমন: খাবার, পানীয়',
-                keyboardType: TextInputType.text,
                 prefixIcon: const Icon(Icons.category),
                 enabled: !_isSubmitting,
                 validator: (value) {
@@ -137,5 +142,10 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
         ),
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('isEditing', isEditing));
   }
 }

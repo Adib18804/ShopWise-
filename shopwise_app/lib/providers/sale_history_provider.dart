@@ -1,21 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shopwise_app/features/sales/screens/create_sale_screen.dart' show CreateSaleScreen;
 
 import '../core/network/api_exception.dart';
 import '../models/sale_model.dart';
 import '../repositories/invoice_repository.dart';
 
 class SaleHistoryState {
-  final List<SaleModel> invoices;
-  final bool isLoading;
-  final String? error;
 
   const SaleHistoryState({
     this.invoices = const [],
     this.isLoading = false,
     this.error,
   });
+  final List<SaleModel> invoices;
+  final bool isLoading;
+  final String? error;
 
   SaleHistoryState copyWith({
     List<SaleModel>? invoices,
@@ -44,7 +45,7 @@ class SaleHistoryNotifier extends StateNotifier<SaleHistoryState> {
   /// (subsequent calls are no-ops while the subscription is active).
   void init() {
     if (_sub != null) return;
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     _sub = _repo.invoicesStream().listen(
       (invoices) {
         state = SaleHistoryState(invoices: invoices);
@@ -67,7 +68,7 @@ class SaleHistoryNotifier extends StateNotifier<SaleHistoryState> {
     init();
   }
 
-  void clearError() => state = state.copyWith(error: null);
+  void clearError() => state = state.copyWith();
 
   @override
   void dispose() {
@@ -81,6 +82,4 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>(
 );
 
 final saleHistoryProvider =
-    StateNotifierProvider<SaleHistoryNotifier, SaleHistoryState>((ref) {
-  return SaleHistoryNotifier(ref.watch(invoiceRepositoryProvider));
-});
+    StateNotifierProvider<SaleHistoryNotifier, SaleHistoryState>((ref) => SaleHistoryNotifier(ref.watch(invoiceRepositoryProvider)));

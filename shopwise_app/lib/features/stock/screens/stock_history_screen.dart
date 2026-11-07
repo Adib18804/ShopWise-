@@ -4,12 +4,19 @@ import '../../../core/theme/app_colors.dart';
 import '../../../providers/batch_provider.dart';
 
 class StockHistoryScreen extends ConsumerStatefulWidget {
+  const StockHistoryScreen({required this.productId, required this.productName, super.key});
   final int productId;
   final String productName;
-  const StockHistoryScreen({super.key, required this.productId, required this.productName});
 
   @override
   ConsumerState<StockHistoryScreen> createState() => _StockHistoryScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('productId', productId));
+    properties.add(StringProperty('productName', productName));
+  }
 }
 
 class _StockHistoryScreenState extends ConsumerState<StockHistoryScreen> {
@@ -53,7 +60,7 @@ class _StockHistoryScreenState extends ConsumerState<StockHistoryScreen> {
                       margin: const EdgeInsets.only(top: 10),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: (added ? Colors.green : Colors.orange).withOpacity(0.12),
+                          backgroundColor: (added ? Colors.green : Colors.orange).withValues(alpha: 0.12),
                           child: Icon(added ? Icons.add : Icons.remove, color: added ? Colors.green : Colors.orange),
                         ),
                         title: Text(_typeLabel(type)),
@@ -61,7 +68,7 @@ class _StockHistoryScreenState extends ConsumerState<StockHistoryScreen> {
                           if (transaction['batch_number'] != null) 'ব্যাচ: ${transaction['batch_number']}',
                           if (transaction['notes'] != null) transaction['notes'].toString(),
                           _dateLabel(transaction['created_at']?.toString()),
-                        ].join(' • ')),
+                        ].join(' • '),),
                         trailing: Text('${added ? '+' : '-'}${_quantity(amount)}', style: TextStyle(fontWeight: FontWeight.bold, color: added ? Colors.green : Colors.orange)),
                       ),
                     );

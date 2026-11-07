@@ -1,20 +1,29 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../features/auth/screens/welcome_screen.dart';
 import '../../features/customers/screens/customer_list_screen.dart';
+import '../../features/dashboard/screens/admin_feedback_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
+import '../../features/dashboard/screens/feedback_screen.dart';
 import '../../features/products/screens/products_screen.dart';
 import '../../features/reports/screens/report_screen.dart';
 import '../../features/sales/screens/create_sale_screen.dart';
 import '../../features/sales/screens/sale_history_screen.dart';
+import '../../models/shop_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/feedback_provider.dart';
 import '../../providers/language_provider.dart';
+import '../../providers/shop_provider.dart';
+import '../../services/account_deletion_service.dart';
 
 /// Riverpod provider that tracks the current shell tab index (0–4, skipping 2).
 final _shellIndexProvider = StateProvider<int>((ref) => 0);
+const privacyPolicyUrl = 'https://adib18804.github.io/ShopWise-/';
 
 /// Root navigation shell used after the user is authenticated and has a shop.
 ///
@@ -125,11 +134,18 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
 
   void _showMoreSheet() {
     final l = ref.read(appLocalizationsProvider);
+    final isLibrary = ref.read(shopTypeProvider) == ShopType.library;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black38,
-      builder: (_) => _MoreSheet(l: l, onLogout: () => _logout(context, l)),
+      builder: (_) => _MoreSheet(
+        l: l,
+        isLibrary: isLibrary,
+        onLogout: () => _logout(context, l),
+        onDeleteAccount: () => _deleteAccount(context, l),
+        onPrivacyPolicy: () => _openPrivacyPolicy(context, l),
+      ),
     );
   }
 
@@ -143,10 +159,10 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
         actions: [
           TextButton(
               onPressed: () => Navigator.of(dlg).pop(false),
-              child: Text(l.no)),
+              child: Text(l.no),),
           FilledButton(
               onPressed: () => Navigator.of(dlg).pop(true),
-              child: Text(l.yes)),
+              child: Text(l.yes),),
         ],
       ),
     );
@@ -158,6 +174,118 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
       (_) => false,
     );
   }
+
+  Future<void> _openPrivacyPolicy(
+    BuildContext context,
+    AppLocalizations l,
+  ) async {
+    final uri = Uri.parse(privacyPolicyUrl);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(l.isBn
+            ? 'গোপনীয়তা নীতি খোলা যায়নি।'
+            : 'Could not open the Privacy Policy.',),
+        backgroundColor: AppColors.error,
+      ),);
+    }
+  }
+
+  Future<void> _deleteAccount(
+    BuildContext context,
+    AppLocalizations l,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded,
+            color: AppColors.error, size: 34,),
+        title: Text(l.isBn ? 'অ্যাকাউন্ট মুছে ফেলবেন?' : 'Delete account?'),
+        content: Text(l.isBn
+            ? 'এতে আপনার অ্যাকাউন্ট, দোকান, পণ্য, স্টক ব্যাচ, বিক্রয়, ক্যাটাগরি এবং গ্রাহক/সদস্যের তথ্য স্থায়ীভাবে মুছে যাবে। এই কাজটি আর ফিরিয়ে নেওয়া যাবে না।'
+            : 'This permanently deletes your account, shop, products, stock batches, sales, categories, and customer/member data. This action cannot be undone.',),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l.isBn ? 'বাতিল' : 'Cancel'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.delete_forever_rounded),
+            label: Text(l.isBn ? 'সব মুছে ফেলুন' : 'Delete everything'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final passwordController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l.isBn ? 'পরিচয় নিশ্চিত করুন' : 'Confirm your identity'),
+        content: TextField(
+          controller: passwordController,
+          obscureText: true,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: l.isBn ? 'বর্তমান পাসওয়ার্ড' : 'Current password',
+          ),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l.isBn ? 'বাতিল' : 'Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(passwordController.text),
+            child: Text(l.isBn ? 'চালিয়ে যান' : 'Continue'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    if (password == null || password.isEmpty || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+    );
+
+    try {
+      await AccountDeletionService().deleteCurrentAccount(password: password);
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // close progress dialog
+      await ref.read(authProvider.notifier).logout();
+      if (!context.mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const WelcomeScreen()),
+        (_) => false,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // close progress dialog
+      final detail = error is FirebaseAuthException
+          ? (error.message ?? error.code)
+          : error.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          '${l.isBn ? 'অ্যাকাউন্ট মুছতে সমস্যা হয়েছে' : 'Account deletion failed'}: $detail',
+        ),
+        backgroundColor: AppColors.error,
+        duration: const Duration(seconds: 8),
+      ),);
+    }
+  }
 }
 
 // =============================================================================
@@ -165,24 +293,23 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
 // =============================================================================
 
 class _ShopWiseBottomBar extends StatelessWidget {
+
+  const _ShopWiseBottomBar({required this.currentSlot, required this.onTap});
   final int currentSlot;
   final ValueChanged<int> onTap;
 
-  const _ShopWiseBottomBar({required this.currentSlot, required this.onTap});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
+  Widget build(BuildContext context) => DecoratedBox(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: const Border(
-          top: BorderSide(color: AppColors.border, width: 1),
+        border: Border(
+          top: BorderSide(color: AppColors.border),
         ),
         boxShadow: [
           BoxShadow(
             color: AppColors.cardShadow,
             blurRadius: 16,
-            offset: const Offset(0, -4),
+            offset: Offset(0, -4),
           ),
         ],
       ),
@@ -198,14 +325,14 @@ class _ShopWiseBottomBar extends StatelessWidget {
                   activeIcon: Icons.home_rounded,
                   label: 'Home',
                   active: currentSlot == 0,
-                  onTap: () => onTap(0)),
+                  onTap: () => onTap(0),),
               // Slot 1 — Stock
               _NavItem(
                   icon: Icons.inventory_2_outlined,
                   activeIcon: Icons.inventory_2_rounded,
                   label: 'Stock',
                   active: currentSlot == 1,
-                  onTap: () => onTap(1)),
+                  onTap: () => onTap(1),),
               // Slot 2 — FAB spacer
               const Expanded(child: SizedBox()),
               // Slot 3 — Insights
@@ -214,28 +341,29 @@ class _ShopWiseBottomBar extends StatelessWidget {
                   activeIcon: Icons.bar_chart_rounded,
                   label: 'Insights',
                   active: currentSlot == 3,
-                  onTap: () => onTap(3)),
+                  onTap: () => onTap(3),),
               // Slot 4 — More
               _NavItem(
                   icon: Icons.menu_rounded,
                   activeIcon: Icons.menu_rounded,
                   label: 'More',
                   active: currentSlot == 4,
-                  onTap: () => onTap(4)),
+                  onTap: () => onTap(4),),
             ],
           ),
         ),
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('currentSlot', currentSlot));
+    properties.add(ObjectFlagProperty<ValueChanged<int>>.has('onTap', onTap));
   }
 }
 
 class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
 
   const _NavItem({
     required this.icon,
@@ -244,6 +372,11 @@ class _NavItem extends StatelessWidget {
     required this.active,
     required this.onTap,
   });
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -251,7 +384,7 @@ class _NavItem extends StatelessWidget {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        splashColor: AppColors.primary.withOpacity(0.08),
+        splashColor: AppColors.primary.withValues(alpha: 0.08),
         highlightColor: Colors.transparent,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -289,6 +422,16 @@ class _NavItem extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(DiagnosticsProperty<IconData>('activeIcon', activeIcon));
+    properties.add(StringProperty('label', label));
+    properties.add(DiagnosticsProperty<bool>('active', active));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+  }
 }
 
 // =============================================================================
@@ -296,12 +439,11 @@ class _NavItem extends StatelessWidget {
 // =============================================================================
 
 class _ShopWiseFAB extends StatelessWidget {
-  final VoidCallback onTap;
   const _ShopWiseFAB({required this.onTap});
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+  Widget build(BuildContext context) => GestureDetector(
       onTap: () {
         HapticFeedback.mediumImpact();
         onTap();
@@ -314,7 +456,7 @@ class _ShopWiseFAB extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppColors.accent.withOpacity(0.35),
+              color: AppColors.accent.withValues(alpha: 0.35),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -323,6 +465,11 @@ class _ShopWiseFAB extends StatelessWidget {
         child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
   }
 }
 
@@ -330,14 +477,24 @@ class _ShopWiseFAB extends StatelessWidget {
 // "More" bottom-sheet contents
 // =============================================================================
 
-class _MoreSheet extends StatelessWidget {
-  final AppLocalizations l;
-  final VoidCallback onLogout;
+class _MoreSheet extends ConsumerWidget {
 
-  const _MoreSheet({required this.l, required this.onLogout});
+  const _MoreSheet({
+    required this.l,
+    required this.isLibrary,
+    required this.onLogout,
+    required this.onDeleteAccount,
+    required this.onPrivacyPolicy,
+  });
+  final AppLocalizations l;
+  final bool isLibrary;
+  final VoidCallback onLogout;
+  final VoidCallback onDeleteAccount;
+  final VoidCallback onPrivacyPolicy;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isFirebaseAdminProvider).asData?.value ?? false;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
@@ -361,20 +518,62 @@ class _MoreSheet extends StatelessWidget {
           ),
           _SheetTile(
             icon: Icons.receipt_long_rounded,
-            label: l.saleHistory,
+            label: isLibrary
+                ? (l.isBn ? 'ইস্যু ইতিহাস' : 'Issue History')
+                : l.saleHistory,
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => const SaleHistoryScreen()));
+                  builder: (_) => const SaleHistoryScreen(),),);
             },
           ),
           _SheetTile(
             icon: Icons.people_alt_rounded,
-            label: l.customers,
+            label: isLibrary
+                ? (l.isBn ? 'সদস্য' : 'Members')
+                : l.customers,
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => const CustomerListScreen()));
+                  builder: (_) => const CustomerListScreen(),),);
+            },
+          ),
+          _SheetTile(
+            icon: Icons.support_agent_rounded,
+            label: l.isBn ? 'সহায়তা ও মতামত' : 'Help & Support',
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => const FeedbackScreen(),),);
+            },
+          ),
+          if (isAdmin)
+            _SheetTile(
+              icon: Icons.admin_panel_settings_rounded,
+              label: l.isBn ? 'অ্যাডমিন প্যানেল' : 'Admin Panel',
+              color: AppColors.accent,
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => const AdminFeedbackScreen(),),);
+              },
+            ),
+          const Divider(height: 16, indent: 56, endIndent: 16),
+          _SheetTile(
+            icon: Icons.privacy_tip_outlined,
+            label: l.isBn ? 'গোপনীয়তা নীতি' : 'Privacy Policy',
+            onTap: () {
+              Navigator.of(context).pop();
+              onPrivacyPolicy();
+            },
+          ),
+          _SheetTile(
+            icon: Icons.delete_forever_outlined,
+            label: l.isBn ? 'অ্যাকাউন্ট মুছুন' : 'Delete Account',
+            color: AppColors.error,
+            onTap: () {
+              Navigator.of(context).pop();
+              onDeleteAccount();
             },
           ),
           const Divider(height: 16, indent: 56, endIndent: 16),
@@ -388,13 +587,19 @@ class _MoreSheet extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onLogout', onLogout));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onDeleteAccount', onDeleteAccount));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onPrivacyPolicy', onPrivacyPolicy));
+  }
 }
 
 class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? color;
 
   const _SheetTile({
     required this.icon,
@@ -402,6 +607,10 @@ class _SheetTile extends StatelessWidget {
     required this.onTap,
     this.color,
   });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -410,9 +619,18 @@ class _SheetTile extends StatelessWidget {
       leading: Icon(icon, color: color ?? AppColors.primary, size: 22),
       title: Text(label,
           style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w500, color: c)),
+              fontSize: 15, fontWeight: FontWeight.w500, color: c,),),
       onTap: onTap,
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(StringProperty('label', label));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+    properties.add(ColorProperty('color', color));
   }
 }
 

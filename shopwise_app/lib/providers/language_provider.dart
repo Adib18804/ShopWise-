@@ -5,9 +5,9 @@ enum AppLanguage { bn, en }
 
 /// State holder for the active language.
 class LanguageState {
-  final AppLanguage language;
 
   const LanguageState(this.language);
+  final AppLanguage language;
 }
 
 /// Toggles the whole UI between Bengali and English.
@@ -29,9 +29,7 @@ class LanguageNotifier extends StateNotifier<LanguageState> {
 }
 
 final languageProvider =
-    StateNotifierProvider<LanguageNotifier, LanguageState>((ref) {
-  return LanguageNotifier();
-});
+    StateNotifierProvider<LanguageNotifier, LanguageState>((ref) => LanguageNotifier());
 
 /// Bilingual string catalogue + small formatting helpers (date, amounts,
 /// Bengali digits). Kept as a simple map-driven class rather than ARB files so
@@ -171,21 +169,21 @@ class AppLocalizations {
 
   static const Map<AppLanguage, List<String>> _weekdays = {
     AppLanguage.en: [
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
     ],
     AppLanguage.bn: [
-      'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার', 'রবিবার'
+      'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার', 'রবিবার',
     ],
   };
 
   static const Map<AppLanguage, List<String>> _months = {
     AppLanguage.en: [
       'January', 'February', 'March', 'April', 'May', 'June', 'July',
-      'August', 'September', 'October', 'November', 'December'
+      'August', 'September', 'October', 'November', 'December',
     ],
     AppLanguage.bn: [
       'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই',
-      'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+      'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
     ],
   };
 
@@ -196,6 +194,4 @@ class AppLocalizations {
 }
 
 /// Reactive localisations: rebuilds whenever the language changes.
-final appLocalizationsProvider = Provider<AppLocalizations>((ref) {
-  return AppLocalizations(ref.watch(languageProvider).language);
-});
+final appLocalizationsProvider = Provider<AppLocalizations>((ref) => AppLocalizations(ref.watch(languageProvider).language));

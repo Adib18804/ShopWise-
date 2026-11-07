@@ -33,7 +33,7 @@ class ReportsRepository {
           .doc(uid)
           .collection('invoices')
           .where('created_at',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(sevenDaysAgoStart))
+              isGreaterThanOrEqualTo: Timestamp.fromDate(sevenDaysAgoStart),)
           .get();
 
       final invoices = snap.docs.map((d) => _Invoice(d.data())).toList();
@@ -76,7 +76,7 @@ class ReportsRepository {
     } catch (error) {
       if (error is FirebaseException) {
         throw ApiException(
-            message: error.message ?? 'রিপোর্ট লোড করা যায়নি');
+            message: error.message ?? 'রিপোর্ট লোড করা যায়নি',);
       }
       throw ApiException(message: 'রিপোর্ট লোড করা যায়নি');
     }
@@ -88,22 +88,22 @@ class ReportsRepository {
 
 /// Lightweight invoice view used only for client-side aggregation.
 class _Invoice {
-  final DateTime createdAt;
-  final double totalAmount;
-  final double dueAmount;
-  final double itemsQuantity;
 
   _Invoice(Map<String, dynamic> data)
       : createdAt = _toDateTime(data['created_at']),
         totalAmount = _toDouble(data['total_amount']),
         dueAmount = _toDouble(data['due_amount']),
         itemsQuantity = _sumQuantities(data['items']);
+  final DateTime createdAt;
+  final double totalAmount;
+  final double dueAmount;
+  final double itemsQuantity;
 
   static double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) return 0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    return 0;
   }
 
   static DateTime _toDateTime(dynamic value) {
@@ -114,7 +114,7 @@ class _Invoice {
   }
 
   static double _sumQuantities(dynamic items) {
-    if (items is! List) return 0.0;
+    if (items is! List) return 0;
     var sum = 0.0;
     for (final raw in items) {
       if (raw is Map) sum += _toDouble(raw['quantity']);

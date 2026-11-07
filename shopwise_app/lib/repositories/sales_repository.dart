@@ -132,6 +132,8 @@ class SalesRepository {
       'items': itemsData,
       'status': 'completed',
       'created_at': Timestamp.fromDate(now),
+      if (request.returnDate != null)
+        'return_date': Timestamp.fromDate(request.returnDate!),
       // Customer fields (optional).
       if (request.customerDocId != null) 'customer_id': request.customerDocId,
       if (request.customerName != null) 'customer_name': request.customerName,
@@ -155,7 +157,7 @@ class SalesRepository {
       }
       DocumentSnapshot<Map<String, dynamic>>? customerSnap;
       if (request.customerDocId != null && due > 0) {
-        customerSnap = await tx.get(customersCol.doc(request.customerDocId!));
+        customerSnap = await tx.get(customersCol.doc(request.customerDocId));
       }
 
       // --- Stock validation at commit time ---
@@ -163,12 +165,12 @@ class SalesRepository {
         final snap = batchReads[d.batchDocId]!;
         if (!snap.exists) {
           throw ApiException(
-              message: 'স্টক আপডেট করা যায়নি, আবার চেষ্টা করুন');
+              message: 'স্টক আপডেট করা যায়নি, আবার চেষ্টা করুন',);
         }
         final current = (snap.data()!['quantity'] as num?)?.toDouble() ?? 0;
         if (current < d.quantity - 0.0001) {
           throw ApiException(
-              message: 'স্টক অপর্যাপ্ত, বিক্রয় সম্পন্ন করা যায়নি');
+              message: 'স্টক অপর্যাপ্ত, বিক্রয় সম্পন্ন করা যায়নি',);
         }
       }
 
@@ -203,7 +205,7 @@ class SalesRepository {
         final currentDue =
             (customerSnap.data()?['total_due'] as num?)?.toDouble() ?? 0;
         tx.set(
-          customersCol.doc(request.customerDocId!),
+          customersCol.doc(request.customerDocId),
           {
             'total_due': currentDue + due,
             'updated_at': Timestamp.fromDate(now),
@@ -241,7 +243,7 @@ class SalesRepository {
       }).toList(),
       payments: request.payments
           .map((p) =>
-              SalePaymentModel(amount: p.amount, paymentMethod: p.paymentMethod))
+              SalePaymentModel(amount: p.amount, paymentMethod: p.paymentMethod),)
           .toList(),
     );
   }
@@ -256,10 +258,6 @@ class SalesRepository {
 }
 
 class _ProductInfo {
-  final String docId;
-  final String name;
-  final String unit;
-  final double sellingPrice;
 
   const _ProductInfo({
     required this.docId,
@@ -267,11 +265,15 @@ class _ProductInfo {
     required this.unit,
     required this.sellingPrice,
   });
+  final String docId;
+  final String name;
+  final String unit;
+  final double sellingPrice;
 }
 
 class _Deduction {
-  final String batchDocId;
-  final double quantity;
 
   const _Deduction({required this.batchDocId, required this.quantity});
+  final String batchDocId;
+  final double quantity;
 }

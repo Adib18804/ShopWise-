@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/theme/app_colors.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/shop_provider.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../widgets/layout/main_shell.dart';
 import '../../shop/screens/shop_setup_screen.dart';
 import 'welcome_screen.dart';
@@ -42,7 +43,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       // User is logged in, check shop status
       final user = authState.user!;
       
-      if (user.hasShop) {
+      // Missing shop_type means setup is still incomplete, even if a legacy
+      // document happens to have setup_complete set to true.
+      if (user.hasShop && user.shopType != null) {
         // User has shop, initialize shop data and go to dashboard
         await ref.read(shopProvider.notifier).initialize();
         
@@ -72,8 +75,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  Widget build(BuildContext context) => Scaffold(
       backgroundColor: AppColors.primary,
       body: Center(
         child: Column(
@@ -88,7 +90,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -128,5 +130,4 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         ),
       ),
     );
-  }
 }

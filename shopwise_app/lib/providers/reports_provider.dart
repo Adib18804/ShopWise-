@@ -5,17 +5,17 @@ import '../models/daily_report_model.dart';
 import '../repositories/reports_repository.dart';
 
 class ReportsState {
+
+  const ReportsState({this.isLoading = false, this.summary, this.error});
   final bool isLoading;
   final DailyReportModel? summary;
   final String? error;
-
-  const ReportsState({this.isLoading = false, this.summary, this.error});
 }
 
 class ReportsController extends StateNotifier<ReportsState> {
-  final ReportsRepository _repository;
 
   ReportsController(this._repository) : super(const ReportsState());
+  final ReportsRepository _repository;
 
   Future<void> load() async {
     state = ReportsState(isLoading: true, summary: state.summary);

@@ -9,12 +9,6 @@ import 'category_provider.dart';
 
 /// Product state (unchanged contract).
 class ProductState {
-  final List<ProductModel> products;
-  final bool isLoading;
-  final bool isRefreshing;
-  final String? error;
-  final String? searchQuery;
-  final int? selectedCategoryId;
 
   ProductState({
     this.products = const [],
@@ -24,6 +18,12 @@ class ProductState {
     this.searchQuery,
     this.selectedCategoryId,
   });
+  final List<ProductModel> products;
+  final bool isLoading;
+  final bool isRefreshing;
+  final String? error;
+  final String? searchQuery;
+  final int? selectedCategoryId;
 
   ProductState copyWith({
     List<ProductModel>? products,
@@ -33,8 +33,7 @@ class ProductState {
     String? searchQuery,
     int? selectedCategoryId,
     bool clearCategory = false,
-  }) {
-    return ProductState(
+  }) => ProductState(
       products: products ?? this.products,
       isLoading: isLoading ?? this.isLoading,
       isRefreshing: isRefreshing ?? this.isRefreshing,
@@ -43,33 +42,23 @@ class ProductState {
       selectedCategoryId:
           clearCategory ? null : (selectedCategoryId ?? this.selectedCategoryId),
     );
-  }
 
-  ProductState clearError() {
-    return ProductState(
+  ProductState clearError() => ProductState(
       products: products,
       isLoading: isLoading,
       isRefreshing: isRefreshing,
-      error: null,
       searchQuery: searchQuery,
       selectedCategoryId: selectedCategoryId,
     );
-  }
 
   /// Get filtered products
-  List<ProductModel> get filteredProducts {
-    return products;
-  }
+  List<ProductModel> get filteredProducts => products;
 
   /// Get low stock products
-  List<ProductModel> get lowStockProducts {
-    return products.where((product) => product.isLowStock).toList();
-  }
+  List<ProductModel> get lowStockProducts => products.where((product) => product.isLowStock).toList();
 
   /// Get out of stock products
-  List<ProductModel> get outOfStockProducts {
-    return products.where((product) => product.isOutOfStock).toList();
-  }
+  List<ProductModel> get outOfStockProducts => products.where((product) => product.isOutOfStock).toList();
 }
 
 /// Product state notifier backed by a Firestore real-time stream.
@@ -79,6 +68,8 @@ class ProductState {
 /// stays live without extra round-trips. CRUD methods write to Firestore and
 /// let the stream refresh the list automatically.
 class ProductNotifier extends StateNotifier<ProductState> {
+
+  ProductNotifier(this._productService, this._ref) : super(ProductState());
   final ProductService _productService;
   final Ref _ref;
 
@@ -86,8 +77,6 @@ class ProductNotifier extends StateNotifier<ProductState> {
   List<ProductModel> _all = const [];
   String? _search;
   int? _categoryId;
-
-  ProductNotifier(this._productService, this._ref) : super(ProductState());
 
   /// Load products. On first call this shows a loading spinner until the first
   /// snapshot; subsequent calls just re-filter the live data instantly.
@@ -102,7 +91,6 @@ class ProductNotifier extends StateNotifier<ProductState> {
     if (needsSubscribe) {
       state = state.copyWith(
         isLoading: _all.isEmpty,
-        error: null,
         searchQuery: search,
         selectedCategoryId: categoryId,
         clearCategory: categoryId == null,
@@ -111,7 +99,6 @@ class ProductNotifier extends StateNotifier<ProductState> {
       // The first snapshot will call _applyFilter() with the fresh data.
     } else {
       state = state.copyWith(
-        error: null,
         searchQuery: search,
         selectedCategoryId: categoryId,
         clearCategory: categoryId == null,
@@ -122,7 +109,7 @@ class ProductNotifier extends StateNotifier<ProductState> {
 
   /// Refresh products
   Future<void> refreshProducts() async {
-    state = state.copyWith(isRefreshing: true, error: null);
+    state = state.copyWith(isRefreshing: true);
     await _sub?.cancel();
     _sub = null;
     await _ensureSubscribed();
@@ -150,11 +137,10 @@ class ProductNotifier extends StateNotifier<ProductState> {
   Future<bool> createProduct({
     required int categoryId,
     required String name,
-    String? sku,
+    required String unit, required double sellingPrice, required double defaultPurchasePrice, String? sku,
     String? barcode,
-    required String unit,
-    required double sellingPrice,
-    required double defaultPurchasePrice,
+    String? author,
+    String? isbn,
     double minimumStock = 0,
     int targetStockDays = 7,
   }) async {
@@ -164,6 +150,8 @@ class ProductNotifier extends StateNotifier<ProductState> {
         name: name,
         sku: sku,
         barcode: barcode,
+        author: author,
+        isbn: isbn,
         unit: unit,
         sellingPrice: sellingPrice,
         defaultPurchasePrice: defaultPurchasePrice,
@@ -187,6 +175,8 @@ class ProductNotifier extends StateNotifier<ProductState> {
     String? name,
     String? sku,
     String? barcode,
+    String? author,
+    String? isbn,
     String? unit,
     double? sellingPrice,
     double? defaultPurchasePrice,
@@ -200,6 +190,8 @@ class ProductNotifier extends StateNotifier<ProductState> {
         name: name,
         sku: sku,
         barcode: barcode,
+        author: author,
+        isbn: isbn,
         unit: unit,
         sellingPrice: sellingPrice,
         defaultPurchasePrice: defaultPurchasePrice,
@@ -232,11 +224,11 @@ class ProductNotifier extends StateNotifier<ProductState> {
   Future<void> loadLowStockProducts() async {
     await _sub?.cancel();
     _sub = null;
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     try {
       final products = await _productService.getLowStockProducts();
       _all = products;
-      state = ProductState(products: _enrich(products), isLoading: false);
+      state = ProductState(products: _enrich(products));
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -280,16 +272,12 @@ class ProductNotifier extends StateNotifier<ProductState> {
     }
     if (_search != null && _search!.trim().isNotEmpty) {
       final q = _search!.trim().toLowerCase();
-      filtered = filtered.where((p) {
-        return p.name.toLowerCase().contains(q) ||
+      filtered = filtered.where((p) => p.name.toLowerCase().contains(q) ||
             (p.sku?.toLowerCase().contains(q) ?? false) ||
-            (p.barcode?.toLowerCase().contains(q) ?? false);
-      }).toList();
+            (p.barcode?.toLowerCase().contains(q) ?? false),).toList();
     }
     state = ProductState(
       products: _enrich(filtered),
-      isLoading: false,
-      isRefreshing: false,
       searchQuery: _search,
       selectedCategoryId: _categoryId,
     );
@@ -317,9 +305,7 @@ class ProductNotifier extends StateNotifier<ProductState> {
 }
 
 /// Product service provider
-final productServiceProvider = Provider<ProductService>((ref) {
-  return ProductService();
-});
+final productServiceProvider = Provider<ProductService>((ref) => ProductService());
 
 /// Product state provider
 final productProvider =

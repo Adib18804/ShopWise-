@@ -29,7 +29,7 @@ class ProductService {
     final uid = _uid;
     return _ref.snapshots().map((snap) => snap.docs
         .map((d) => ProductModel.fromFirestore(d, shopId: uid))
-        .toList());
+        .toList(),);
   }
 
   /// One-time fetch with optional client-side search/category filtering.
@@ -50,11 +50,9 @@ class ProductService {
       }
       if (search != null && search.trim().isNotEmpty) {
         final q = search.trim().toLowerCase();
-        list = list.where((p) {
-          return p.name.toLowerCase().contains(q) ||
+        list = list.where((p) => p.name.toLowerCase().contains(q) ||
               (p.sku?.toLowerCase().contains(q) ?? false) ||
-              (p.barcode?.toLowerCase().contains(q) ?? false);
-        }).toList();
+              (p.barcode?.toLowerCase().contains(q) ?? false),).toList();
       }
       return list;
     } on ApiException {
@@ -85,11 +83,10 @@ class ProductService {
   Future<ProductModel> createProduct({
     required int categoryId,
     required String name,
-    String? sku,
+    required String unit, required double sellingPrice, required double defaultPurchasePrice, String? sku,
     String? barcode,
-    required String unit,
-    required double sellingPrice,
-    required double defaultPurchasePrice,
+    String? author,
+    String? isbn,
     double minimumStock = 0,
     int targetStockDays = 7,
   }) async {
@@ -101,6 +98,8 @@ class ProductService {
         'name': name.trim(),
         if (sku != null && sku.trim().isNotEmpty) 'sku': sku.trim(),
         if (barcode != null && barcode.trim().isNotEmpty) 'barcode': barcode.trim(),
+        if (author != null && author.trim().isNotEmpty) 'author': author.trim(),
+        if (isbn != null && isbn.trim().isNotEmpty) 'isbn': isbn.trim(),
         'unit': unit,
         'selling_price': sellingPrice,
         'default_purchase_price': defaultPurchasePrice,
@@ -127,6 +126,8 @@ class ProductService {
     String? name,
     String? sku,
     String? barcode,
+    String? author,
+    String? isbn,
     String? unit,
     double? sellingPrice,
     double? defaultPurchasePrice,
@@ -143,6 +144,8 @@ class ProductService {
       if (name != null) data['name'] = name.trim();
       if (sku != null) data['sku'] = sku.trim();
       if (barcode != null) data['barcode'] = barcode.trim();
+      if (author != null) data['author'] = author.trim();
+      if (isbn != null) data['isbn'] = isbn.trim();
       if (unit != null) data['unit'] = unit;
       if (sellingPrice != null) data['selling_price'] = sellingPrice;
       if (defaultPurchasePrice != null) {

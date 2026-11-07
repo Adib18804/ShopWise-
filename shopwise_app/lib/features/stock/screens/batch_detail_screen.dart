@@ -7,9 +7,9 @@ import '../../../providers/batch_provider.dart';
 import 'batch_form_screen.dart';
 
 class BatchDetailScreen extends ConsumerWidget {
+  const BatchDetailScreen({required this.product, required this.batch, super.key});
   final ProductModel product;
   final BatchModel batch;
-  const BatchDetailScreen({super.key, required this.product, required this.batch});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,8 +39,8 @@ class BatchDetailScreen extends ConsumerWidget {
                         unit: product.unit,
                         batch: batch,
                       ),
-                    ));
-                    if (updated == true && context.mounted) Navigator.of(context).pop(true);
+                    ),);
+                    if ((updated ?? false) && context.mounted) Navigator.of(context).pop(true);
                   }
                 : null,
           ),
@@ -55,9 +55,9 @@ class BatchDetailScreen extends ConsumerWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(product.name, style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 4),
-                Text(batch.batchNumber?.isNotEmpty == true ? batch.batchNumber! : 'ব্যাচ #${batch.id}'),
+                Text(batch.batchNumber?.isNotEmpty ?? false ? batch.batchNumber! : 'ব্যাচ #${batch.id}'),
                 const SizedBox(height: 16),
-                Chip(label: Text(_statusLabel(status)), backgroundColor: color.withOpacity(0.12), labelStyle: TextStyle(color: color)),
+                Chip(label: Text(_statusLabel(status)), backgroundColor: color.withValues(alpha: 0.12), labelStyle: TextStyle(color: color)),
                 const Divider(height: 24),
                 _detail('পরিমাণ', '${batch.quantity} ${product.unit}'),
                 _detail('ক্রয় মূল্য', '৳${batch.purchasePrice.toStringAsFixed(2)}'),
@@ -65,7 +65,7 @@ class BatchDetailScreen extends ConsumerWidget {
                 _detail('মেয়াদ শেষ', batch.expiryDate == null ? 'মেয়াদ নেই' : _date(batch.expiryDate!)),
                 _detail('মেয়াদের অবস্থা', batch.expiryStatusText),
                 _detail('মোট মূল্য', '৳${batch.totalValue.toStringAsFixed(2)}'),
-              ]),
+              ],),
             ),
           ),
           if (batch.quantity <= 0 && batch.isActive) ...[
@@ -114,7 +114,7 @@ class BatchDetailScreen extends ConsumerWidget {
         child: Row(children: [
           SizedBox(width: 130, child: Text(label, style: const TextStyle(color: Colors.black54))),
           Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
-        ]),
+        ],),
       );
 
   static String _date(DateTime value) =>
@@ -127,4 +127,11 @@ class BatchDetailScreen extends ConsumerWidget {
         'DEPLETED' => 'স্টক শেষ',
         _ => 'সক্রিয়',
       };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<ProductModel>('product', product));
+    properties.add(DiagnosticsProperty<BatchModel>('batch', batch));
+  }
 }

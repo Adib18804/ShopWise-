@@ -1,25 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../models/batch_model.dart';
+import '../../../models/shop_model.dart';
 import '../../../providers/batch_provider.dart';
+import '../../../providers/language_provider.dart';
+import '../../../providers/shop_provider.dart';
 
 class BatchFormScreen extends ConsumerStatefulWidget {
+
+  const BatchFormScreen({
+    required this.productId, required this.productName, required this.unit, super.key,
+    this.batch,
+  });
   final int productId;
   final String productName;
   final String unit;
   final BatchModel? batch;
 
-  const BatchFormScreen({
-    super.key,
-    required this.productId,
-    required this.productName,
-    required this.unit,
-    this.batch,
-  });
-
   @override
   ConsumerState<BatchFormScreen> createState() => _BatchFormScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('productId', productId));
+    properties.add(StringProperty('productName', productName));
+    properties.add(StringProperty('unit', unit));
+    properties.add(DiagnosticsProperty<BatchModel?>('batch', batch));
+  }
 }
 
 class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
@@ -78,6 +88,27 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
   }
 
   Future<void> _save() async {
+    final shopType = ref.read(shopTypeProvider);
+    final isBn = ref.read(appLocalizationsProvider).isBn;
+    final isPharmacy = shopType == ShopType.pharmacy;
+    final supportsBatchTracking =
+        shopType == ShopType.general || shopType == ShopType.pharmacy;
+    if (isPharmacy && _number.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isBn
+            ? 'ফার্মেসির জন্য ব্যাচ নম্বর আবশ্যক'
+            : 'Batch number is required for a pharmacy',),),
+      );
+      return;
+    }
+    if (isPharmacy && _expiryDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isBn
+            ? 'ফার্মেসির জন্য মেয়াদ শেষের তারিখ আবশ্যক'
+            : 'Expiry date is required for a pharmacy',),),
+      );
+      return;
+    }
     if (!_editing && _expiryDate != null && !_expiryDate!.isAfter(_purchaseDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('মেয়াদ শেষের তারিখ ক্রয়ের তারিখের পরে হতে হবে')),
@@ -88,7 +119,7 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
     final purchasePrice = double.tryParse(_price.text.trim()) ?? 0.0;
     if (!quantity.isFinite || (!_editing && quantity <= 0) || (_editing && quantity < 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
             '\u09AA\u09B0\u09BF\u09AE\u09BE\u09A3 \u0985\u09AC\u09B6\u09CD\u09AF\u0987 \u09E6 \u098F\u09B0 \u09AC\u09C7\u09B6\u09BF \u09B9\u09AC\u09C7',
           ),
@@ -98,7 +129,7 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
     }
     if (!purchasePrice.isFinite || purchasePrice < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
             '\u0995\u09CD\u09B0\u09DF \u09AE\u09C2\u09B2\u09CD\u09AF \u09B8\u09A0\u09BF\u0995 \u09A8\u09DF',
           ),
@@ -113,12 +144,16 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
         ? await notifier.updateBatch(widget.batch!.id, {
             'quantity': quantity,
             'purchase_price': purchasePrice,
-            'expiry_date': _expiryDate == null ? null : _dateOnly(_expiryDate!),
+            if (supportsBatchTracking) 'batch_number': _number.text.trim(),
+            if (supportsBatchTracking)
+              'expiry_date': _expiryDate == null ? null : _dateOnly(_expiryDate!),
           })
         : await notifier.addBatch(
-            batchNumber: _number.text.trim().isEmpty ? null : _number.text.trim(),
+            batchNumber: supportsBatchTracking && _number.text.trim().isNotEmpty
+                ? _number.text.trim()
+                : null,
             purchaseDate: _purchaseDate,
-            expiryDate: _expiryDate,
+            expiryDate: supportsBatchTracking ? _expiryDate : null,
             quantity: quantity,
             purchasePrice: purchasePrice,
           );
@@ -134,6 +169,11 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final shopType = ref.watch(shopTypeProvider);
+    final isBn = ref.watch(appLocalizationsProvider).isBn;
+    final isPharmacy = shopType == ShopType.pharmacy;
+    final supportsBatchTracking =
+        shopType == ShopType.general || shopType == ShopType.pharmacy;
     return Scaffold(
       appBar: AppBar(
         title: Text(_editing ? 'ব্যাচ সম্পাদনা' : 'স্টক যোগ করুন'),
@@ -148,24 +188,36 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
             children: [
               Text(widget.productName, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 18),
-              if (!_editing) ...[
+              if (supportsBatchTracking) ...[
                 TextFormField(
                   controller: _number,
-                  decoration: const InputDecoration(labelText: 'ব্যাচ নম্বর (ঐচ্ছিক)', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    labelText: isBn
+                        ? (isPharmacy ? 'ব্যাচ নম্বর *' : 'ব্যাচ নম্বর (ঐচ্ছিক)')
+                        : (isPharmacy ? 'Batch number *' : 'Batch number (optional)'),
+                    border: const OutlineInputBorder(),
+                  ),
                   enabled: !_submitting,
                   maxLength: 100,
                 ),
                 const SizedBox(height: 10),
-                _dateTile('ক্রয়ের তারিখ', _purchaseDate, () => _chooseDate(expiry: false)),
               ],
+              if (!_editing)
+                _dateTile(
+                    isBn ? 'ক্রয়ের তারিখ' : 'Purchase date',
+                    _purchaseDate,
+                    () => _chooseDate(expiry: false),),
               const SizedBox(height: 10),
-              _dateTile(
-                'মেয়াদ শেষের তারিখ',
-                _expiryDate,
-                () => _chooseDate(expiry: true),
-                clearable: true,
-                onClear: () => setState(() => _expiryDate = null),
-              ),
+              if (supportsBatchTracking)
+                _dateTile(
+                  isBn
+                      ? (isPharmacy ? 'মেয়াদ শেষের তারিখ *' : 'মেয়াদ শেষের তারিখ')
+                      : (isPharmacy ? 'Expiry date *' : 'Expiry date'),
+                  _expiryDate,
+                  () => _chooseDate(expiry: true),
+                  clearable: !isPharmacy,
+                  onClear: isPharmacy ? null : () => setState(() => _expiryDate = null),
+                ),
               const SizedBox(height: 18),
               TextFormField(
                 controller: _quantity,
@@ -210,8 +262,7 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
     );
   }
 
-  Widget _dateTile(String label, DateTime? value, VoidCallback onTap, {bool clearable = false, VoidCallback? onClear}) {
-    return Card(
+  Widget _dateTile(String label, DateTime? value, VoidCallback onTap, {bool clearable = false, VoidCallback? onClear}) => Card(
       child: ListTile(
         onTap: _submitting ? null : onTap,
         leading: const Icon(Icons.calendar_month),
@@ -221,10 +272,9 @@ class _BatchFormScreenState extends ConsumerState<BatchFormScreen> {
           if (clearable && value != null)
             IconButton(onPressed: _submitting ? null : onClear, icon: const Icon(Icons.close), tooltip: 'তারিখ মুছুন'),
           const Icon(Icons.chevron_right),
-        ]),
+        ],),
       ),
     );
-  }
 
   static String _dateOnly(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

@@ -6,13 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// whenever a sale has `due_amount > 0` and decremented whenever the
 /// shopkeeper records a payment.
 class CustomerModel {
-  /// Firestore document id.
-  final String docId;
-  final String name;
-  final String phone;
-  final double totalDue;
-  final DateTime createdAt;
-  final DateTime updatedAt;
 
   const CustomerModel({
     required this.docId,
@@ -36,6 +29,13 @@ class CustomerModel {
       updatedAt: _toDateTime(data['updated_at']),
     );
   }
+  /// Firestore document id.
+  final String docId;
+  final String name;
+  final String phone;
+  final double totalDue;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   Map<String, dynamic> toFirestore() => {
         'name': name,
@@ -63,10 +63,10 @@ class CustomerModel {
       );
 
   static double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) return 0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    return 0;
   }
 
   static DateTime _toDateTime(dynamic value) {

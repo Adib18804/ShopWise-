@@ -4,12 +4,6 @@ import '../models/batch_model.dart';
 import '../services/batch_service.dart';
 
 class BatchState {
-  final List<BatchModel> batches;
-  final double currentStock;
-  final bool isLoading;
-  final String? error;
-  final Map<String, dynamic>? stockHistory;
-  final Map<String, dynamic>? fefo;
 
   const BatchState({
     this.batches = const [],
@@ -19,6 +13,12 @@ class BatchState {
     this.stockHistory,
     this.fefo,
   });
+  final List<BatchModel> batches;
+  final double currentStock;
+  final bool isLoading;
+  final String? error;
+  final Map<String, dynamic>? stockHistory;
+  final Map<String, dynamic>? fefo;
 
   BatchState copyWith({
     List<BatchModel>? batches,
@@ -39,13 +39,13 @@ class BatchState {
 }
 
 class BatchNotifier extends StateNotifier<BatchState> {
+
+  BatchNotifier(this.productId, this._service) : super(const BatchState());
   final int productId;
   final BatchService _service;
 
-  BatchNotifier(this.productId, this._service) : super(const BatchState());
-
   Future<void> load({bool includeDepleted = true}) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     try {
       final result = await _service.getBatches(productId, includeDepleted: includeDepleted);
       final product = result['product'] as Map<String, dynamic>;
@@ -113,7 +113,7 @@ class BatchNotifier extends StateNotifier<BatchState> {
   Future<void> loadStockHistory() async {
     try {
       final history = await _service.getStockHistory(productId);
-      state = state.copyWith(stockHistory: history, error: null);
+      state = state.copyWith(stockHistory: history);
     } catch (error) {
       state = state.copyWith(error: error is ApiException ? error.message : 'স্টক ইতিহাস লোড করা যায়নি');
     }
@@ -122,7 +122,7 @@ class BatchNotifier extends StateNotifier<BatchState> {
   Future<void> loadFefo() async {
     try {
       final result = await _service.getFefoRecommendations(productId);
-      state = state.copyWith(fefo: result, error: null);
+      state = state.copyWith(fefo: result);
     } catch (error) {
       state = state.copyWith(error: error is ApiException ? error.message : 'FEFO তথ্য লোড করা যায়নি');
     }
@@ -131,6 +131,4 @@ class BatchNotifier extends StateNotifier<BatchState> {
 
 final batchServiceProvider = Provider<BatchService>((ref) => BatchService());
 
-final batchProvider = StateNotifierProvider.family<BatchNotifier, BatchState, int>((ref, productId) {
-  return BatchNotifier(productId, ref.watch(batchServiceProvider));
-});
+final batchProvider = StateNotifierProvider.family<BatchNotifier, BatchState, int>((ref, productId) => BatchNotifier(productId, ref.watch(batchServiceProvider)));
