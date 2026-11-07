@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Wraps [FlutterLocalNotificationsPlugin] for ShopWise smart alerts.
@@ -27,10 +28,15 @@ class NotificationService {
     await _plugin.initialize(initSettings);
 
     // Request Android 13+ notification permission (no-op on older versions).
-    await _plugin
+    final permissionGranted = await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+
+    debugPrint(
+      'Local notification initialization complete; '
+      'Android notification permission: ${permissionGranted ?? 'not applicable'}.',
+    );
 
     _initialised = true;
   }
@@ -65,8 +71,8 @@ class NotificationService {
 
   static const AndroidNotificationDetails _androidDetails =
       AndroidNotificationDetails(
-    'shopwise_alerts',   // channel id
-    'ShopWise সতর্কতা',  // channel name
+    'shopwise_alerts', // channel id
+    'ShopWise সতর্কতা', // channel name
     channelDescription: 'স্টক ও মেয়াদ সংক্রান্ত সতর্কতা',
     importance: Importance.high,
     priority: Priority.high,

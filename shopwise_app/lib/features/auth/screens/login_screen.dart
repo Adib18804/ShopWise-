@@ -40,39 +40,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           password: _passwordController.text,
         );
 
+    if (success) {
+      _continueAfterAuthentication();
+    } else {
+      _showAuthenticationError();
+    }
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    final success = await ref.read(authProvider.notifier).signInWithGoogle();
     if (!mounted) return;
 
     if (success) {
-      // Check if user has shop
-      final user = ref.read(authProvider).user;
-      
-      // hasShop is false unless Firestore setup is complete; shopType is an
-      // explicit guard so missing shop_type documents always return to setup.
-      if ((user?.hasShop ?? false) && user?.shopType != null) {
-        // Navigate to dashboard
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const ShopWiseShell(),
-          ),
-        );
-      } else {
-        // Navigate to shop setup
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const ShopSetupScreen(),
-          ),
-        );
-      }
+      _continueAfterAuthentication();
     } else {
-      // Show error
-      final error = ref.read(authProvider).error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error ?? 'Login failed'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      _showAuthenticationError();
     }
+  }
+
+  void _continueAfterAuthentication() {
+    if (!mounted) return;
+    final user = ref.read(authProvider).user;
+    final destination = (user?.hasShop ?? false) && user?.shopType != null
+        ? const ShopWiseShell()
+        : const ShopSetupScreen();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => destination),
+    );
+  }
+
+  void _showAuthenticationError() {
+    if (!mounted) return;
+    final error = ref.read(authProvider).error;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'লগইন করা যায়নি। আবার চেষ্টা করুন।'),
+        backgroundColor: AppColors.error,
+      ),
+    );
   }
 
   @override
@@ -190,6 +195,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   text: 'লগইন করুন',
                   onPressed: _handleLogin,
                   isLoading: authState.isLoading,
+                ),
+                const SizedBox(height: 16),
+
+                // Google sign-in uses the same post-auth shop setup routing.
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        authState.isLoading ? null : _handleGoogleLogin,
+                    icon: const Icon(Icons.g_mobiledata, size: 30),
+                    label: const Text(
+                      'Google দিয়ে লগইন করুন',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.black87,
+                      side: const BorderSide(color: Color(0xFFDADCE0)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 

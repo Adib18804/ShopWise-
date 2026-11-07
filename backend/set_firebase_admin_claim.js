@@ -4,21 +4,14 @@
  * Usage:
  *   node set_firebase_admin_claim.js <firebase-auth-uid> [--revoke]
  *
- * Authenticate using GOOGLE_APPLICATION_CREDENTIALS or Google Application
- * Default Credentials. Never put a service-account key in the repository.
+ * Keep service-account.json out of version control. It grants privileged
+ * access to the Firebase project.
  */
 'use strict';
 
-let admin;
-try {
-  admin = require('firebase-admin');
-} catch (_) {
-  console.error(
-    'firebase-admin is not installed. From backend/, run: ' +
-      'npm install --no-save --package-lock=false firebase-admin',
-  );
-  process.exit(1);
-}
+const { cert, getApps, initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const serviceAccount = require('./service-account.json');
 
 const uid = process.argv[2];
 const revoke = process.argv[3] === '--revoke';
@@ -30,12 +23,14 @@ if (!uid || uid.startsWith('--')) {
   process.exit(1);
 }
 
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-});
+const app =
+  getApps()[0] ||
+  initializeApp({
+    credential: cert(serviceAccount),
+  });
 
 async function main() {
-  const auth = admin.auth();
+  const auth = getAuth(app);
   const user = await auth.getUser(uid);
   const claims = { ...(user.customClaims || {}) };
 
@@ -55,8 +50,8 @@ async function main() {
 main().catch((error) => {
   console.error(
     `Could not update admin claim: ${error.message}\n` +
-      'Check that Application Default Credentials are configured and have ' +
-      'Firebase Authentication Admin privileges.',
+      'Verify the service-account file and its Firebase Authentication ' +
+      'Admin privileges.',
   );
   process.exitCode = 1;
 });
