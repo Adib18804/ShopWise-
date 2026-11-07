@@ -1,4 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -604,7 +605,7 @@ class _SalesTrendCard extends StatelessWidget {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(IterableProperty<>('trend', trend));
+    properties.add(IterableProperty<dynamic>('trend', trend));
     properties.add(DiagnosticsProperty<bool>('isLoading', isLoading));
     properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
@@ -732,7 +733,7 @@ class _TrendLineChart extends StatelessWidget {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(IterableProperty<>('trend', trend));
+    properties.add(IterableProperty<dynamic>('trend', trend));
     properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
 }

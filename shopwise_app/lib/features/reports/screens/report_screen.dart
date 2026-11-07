@@ -1,4 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -237,12 +238,9 @@ class _SalesTrendCard extends StatelessWidget {
                     horizontalInterval: maxY / 4,),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                      ,),
-                  rightTitles: const AxisTitles(
-                      ,),
-                  leftTitles: const AxisTitles(
-                      ,),
+                  topTitles: const AxisTitles(),
+                  rightTitles: const AxisTitles(),
+                  leftTitles: const AxisTitles(),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,

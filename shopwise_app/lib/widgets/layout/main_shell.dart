@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,8 +73,6 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
     _pageController.dispose();
     super.dispose();
   }
-
-  int get _currentSlot => ref.read(_shellIndexProvider);
 
   void _onSlotTap(int slot) {
     if (slot == 2) {
