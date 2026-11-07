@@ -42,6 +42,7 @@ build/
 
 # Firebase
 firebase-adminsdk-*.json
+service-account.json
 
 # Test
 test-results/
@@ -49,3 +50,10 @@ test-results/
 # Temporary files
 tmp/
 temp/
+
+
+*.log
+*.hprof
+*.before-build
+service-account.json.json
+service-account.json

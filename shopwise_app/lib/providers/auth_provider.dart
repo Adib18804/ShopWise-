@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../core/network/api_exception.dart';
 import '../models/user_model.dart';
@@ -59,6 +61,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   FirebaseAuth get _auth => FirebaseAuth.instance;
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  Future<void>? _googleSignInInitialization;
 
   /// Restores the session on app start (called by the splash screen).
   Future<void> initialize() async {
@@ -175,6 +178,79 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(error: _errorMessage(error));
       return false;
     }
+  }
+
+  /// Signs in with Google and provisions a profile for first-time users.
+  /// Existing profile fields (including shop setup state) are never overwritten.
+  Future<bool> signInWithGoogle() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final googleSignIn = GoogleSignIn.instance;
+      final serverClientId = dotenv.env['GOOGLE_SERVER_CLIENT_ID']?.trim();
+      if (serverClientId == null || serverClientId.isEmpty) {
+        throw ApiException(
+          message: 'Google লগইন কনফিগার করা নেই। পরে আবার চেষ্টা করুন।',
+        );
+      }
+      _googleSignInInitialization ??= googleSignIn.initialize(
+        serverClientId: serverClientId,
+      );
+      await _googleSignInInitialization;
+
+      final googleUser = await googleSignIn.authenticate();
+      final googleAuth = googleUser.authentication;
+      final idToken = googleAuth.idToken;
+      if (idToken == null) {
+        throw ApiException(
+          message: 'Google থেকে পরিচয় যাচাই করা যায়নি। আবার চেষ্টা করুন।',
+        );
+      }
+
+      final credential = GoogleAuthProvider.credential(idToken: idToken);
+      final userCredential = await _auth.signInWithCredential(credential);
+      final firebaseUser = userCredential.user;
+      if (firebaseUser == null) {
+        throw ApiException(message: 'Google লগইন সম্পন্ন করা যায়নি।');
+      }
+
+      await _createUserProfileIfMissing(firebaseUser);
+      final user = await _loadUser(firebaseUser);
+      state = AuthState(
+        user: user,
+        isAuthenticated: true,
+        shopId: firebaseUser.uid,
+      );
+      return true;
+    } catch (error) {
+      state = AuthState(error: _errorMessage(error));
+      return false;
+    }
+  }
+
+  /// Creates the same initial Firestore profile used by email registration.
+  /// A transaction avoids replacing an existing profile if two sign-ins race.
+  Future<void> _createUserProfileIfMissing(User firebaseUser) async {
+    final profileRef = _firestore.collection('users').doc(firebaseUser.uid);
+    await _firestore.runTransaction((transaction) async {
+      final profileSnapshot = await transaction.get(profileRef);
+      if (profileSnapshot.exists) return;
+
+      final now = Timestamp.fromDate(DateTime.now().toUtc());
+      final email = firebaseUser.email ?? '';
+      final fallbackName = email.contains('@') ? email.split('@').first : '';
+      transaction.set(profileRef, <String, dynamic>{
+        'uid': firebaseUser.uid,
+        'name': firebaseUser.displayName?.trim().isNotEmpty == true
+            ? firebaseUser.displayName!.trim()
+            : fallbackName,
+        'phone': firebaseUser.phoneNumber ?? '',
+        'email': email,
+        'preferred_language': 'bn',
+        'has_shop': false,
+        'created_at': now,
+        'updated_at': now,
+      });
+    });
   }
 
   Future<void> logout() async {
