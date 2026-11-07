@@ -28,7 +28,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-            '\u09a6\u09c8\u09a8\u09bf\u0995 \u09b0\u09bf\u09aa\u09cb\u09b0\u09cd\u099f'),
+            '\u09a6\u09c8\u09a8\u09bf\u0995 \u09b0\u09bf\u09aa\u09cb\u09b0\u09cd\u099f',),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
@@ -53,9 +53,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                      color: AppColors.primary.withOpacity(0.22),
+                      color: AppColors.primary.withValues(alpha: 0.22),
                       blurRadius: 18,
-                      offset: const Offset(0, 8)),
+                      offset: const Offset(0, 8),),
                 ],
               ),
               child: Row(
@@ -67,14 +67,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                         Text(
                             '\u0986\u099c\u0995\u09c7\u09b0 \u09b8\u09be\u09b0\u09be\u0982\u09b6',
                             style:
-                                TextStyle(color: Colors.white70, fontSize: 14)),
+                                TextStyle(color: Colors.white70, fontSize: 14),),
                         SizedBox(height: 8),
                         Text(
                             '\u09b8\u09be\u09b0\u09be\u09a6\u09bf\u09a8\u09c7\u09b0 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf',
                             style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
-                                fontWeight: FontWeight.w600)),
+                                fontWeight: FontWeight.w600,),),
                       ],
                     ),
                   ),
@@ -82,13 +82,13 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                     const SizedBox.square(
                         dimension: 28,
                         child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5))
+                            color: Colors.white, strokeWidth: 2.5,),)
                   else
                     Text('\u09F3${_amount(report?.totalSalesAmount ?? 0)}',
                         style: const TextStyle(
                             color: Colors.white,
                             fontSize: 25,
-                            fontWeight: FontWeight.bold)),
+                            fontWeight: FontWeight.bold,),),
                 ],
               ),
             ),
@@ -96,7 +96,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               const SizedBox(height: 14),
               _ErrorCard(
                   message: state.error!,
-                  onRetry: () => ref.read(reportsProvider.notifier).load()),
+                  onRetry: () => ref.read(reportsProvider.notifier).load(),),
             ],
             if (report != null) ...[
               const SizedBox(height: 20),
@@ -126,7 +126,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               const SizedBox(height: 24),
               const Text(
                   '\u0997\u09a4 \u09b8\u09be\u09a4 \u09a6\u09bf\u09a8\u09c7\u09b0 \u09ac\u09bf\u0995\u09cd\u09b0\u09bf',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),),
               const SizedBox(height: 12),
               _SalesTrendCard(points: report.salesTrend),
             ],
@@ -143,16 +143,16 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 }
 
 class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final List<Color> colors;
 
   const _StatCard(
       {required this.title,
       required this.value,
       required this.icon,
-      required this.colors});
+      required this.colors,});
+  final String title;
+  final String value;
+  final IconData icon;
+  final List<Color> colors;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -162,7 +162,7 @@ class _StatCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(
-                color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5))
+                color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5),),
           ],
         ),
         child: Row(
@@ -172,14 +172,14 @@ class _StatCard extends StatelessWidget {
               height: 52,
               decoration: BoxDecoration(
                   gradient: LinearGradient(colors: colors),
-                  borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),),
               child: Icon(icon, color: Colors.white, size: 28),
             ),
             const SizedBox(width: 14),
             Expanded(
                 child: Text(title,
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 14))),
+                        color: AppColors.textSecondary, fontSize: 14,),),),
             const SizedBox(width: 8),
             Flexible(
                 child: Text(value,
@@ -187,22 +187,31 @@ class _StatCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary))),
+                        color: AppColors.textPrimary,),),),
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('title', title));
+    properties.add(StringProperty('value', value));
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(IterableProperty<Color>('colors', colors));
+  }
 }
 
 class _SalesTrendCard extends StatelessWidget {
-  final List<SalesTrendPoint> points;
 
   const _SalesTrendCard({required this.points});
+  final List<SalesTrendPoint> points;
 
   @override
   Widget build(BuildContext context) {
     final safePoints = points.length == 7 ? points : const <SalesTrendPoint>[];
     final maxSales = safePoints.fold<double>(
-        0, (max, point) => point.salesAmount > max ? point.salesAmount : max);
+        0, (max, point) => point.salesAmount > max ? point.salesAmount : max,);
     final maxY = maxSales == 0 ? 100.0 : maxSales * 1.2;
 
     return Container(
@@ -213,28 +222,27 @@ class _SalesTrendCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: const [
             BoxShadow(
-                color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5))
-          ]),
+                color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 5),),
+          ],),
       child: safePoints.isEmpty
           ? const Center(
               child: Text(
-                  '\u09ac\u09bf\u0995\u09cd\u09b0\u09bf\u09b0 \u09a4\u09a5\u09cd\u09af \u09aa\u09be\u0993\u09df\u09be \u09af\u09be\u09df\u09a8\u09bf'))
+                  '\u09ac\u09bf\u0995\u09cd\u09b0\u09bf\u09b0 \u09a4\u09a5\u09cd\u09af \u09aa\u09be\u0993\u09df\u09be \u09af\u09be\u09df\u09a8\u09bf',),)
           : LineChart(
               LineChartData(
                 minY: 0,
                 maxY: maxY,
                 gridData: FlGridData(
-                    show: true,
                     drawVerticalLine: false,
-                    horizontalInterval: maxY / 4),
+                    horizontalInterval: maxY / 4,),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
                   topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                      ,),
                   rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                      ,),
                   leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                      ,),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -242,14 +250,15 @@ class _SalesTrendCard extends StatelessWidget {
                       interval: 1,
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
-                        if (index < 0 || index >= safePoints.length)
+                        if (index < 0 || index >= safePoints.length) {
                           return const SizedBox.shrink();
+                        }
                         return Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(_weekday(safePoints[index].date),
                                 style: const TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.textSecondary)));
+                                    color: AppColors.textSecondary,),),);
                       },
                     ),
                   ),
@@ -260,34 +269,39 @@ class _SalesTrendCard extends StatelessWidget {
                         .asMap()
                         .entries
                         .map((entry) => FlSpot(
-                            entry.key.toDouble(), entry.value.salesAmount))
+                            entry.key.toDouble(), entry.value.salesAmount,),)
                         .toList(),
                     isCurved: true,
                     color: AppColors.primary,
                     barWidth: 4,
-                    dotData: const FlDotData(show: true),
                     belowBarData: BarAreaData(
                         show: true,
                         gradient: LinearGradient(
                             colors: [
-                              AppColors.primary.withOpacity(0.25),
-                              AppColors.primary.withOpacity(0.02)
+                              AppColors.primary.withValues(alpha: 0.25),
+                              AppColors.primary.withValues(alpha: 0.02),
                             ],
                             begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter)),
+                            end: Alignment.bottomCenter,),),
                   ),
                 ],
               ),
             ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IterableProperty<SalesTrendPoint>('points', points));
+  }
 }
 
 class _ErrorCard extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
 
   const _ErrorCard({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -300,10 +314,17 @@ class _ErrorCard extends StatelessWidget {
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
                 label: const Text(
-                    '\u0986\u09ac\u09be\u09b0 \u099a\u09c7\u09b7\u09cd\u099f\u09be'))
-          ]),
+                    '\u0986\u09ac\u09be\u09b0 \u099a\u09c7\u09b7\u09cd\u099f\u09be',),),
+          ],),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('message', message));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onRetry', onRetry));
+  }
 }
 
 String _amount(double value) => value.toStringAsFixed(2);
@@ -321,7 +342,7 @@ String _weekday(String date) {
     '\u09ac\u09c3\u09b9\u09b8\u09cd\u09aa\u09a4\u09bf',
     '\u09b6\u09c1\u0995\u09cd\u09b0',
     '\u09b6\u09a8\u09bf',
-    '\u09b0\u09ac\u09bf'
+    '\u09b0\u09ac\u09bf',
   ];
   return labels[weekday - 1];
 }

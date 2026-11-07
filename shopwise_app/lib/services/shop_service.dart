@@ -28,14 +28,14 @@ class ShopService {
 
   /// Creates (or completes) the shop record for the signed-in user.
   ///
-  /// The `shops` document is seeded during registration with `setup_complete:
-  /// false`; this merges in the shop name/address/phone/currency and flips the
-  /// flag to `true`, then marks `users.has_shop` for fast auth-state checks.
+  /// This is the only path that creates the `shops/{uid}` document. It stores
+  /// the selected business type and marks setup complete after form submission.
   Future<ShopModel> createShop({
     required String shopName,
     required String address,
     required String phone,
     String currency = 'BDT',
+    ShopType shopType = ShopType.general,
   }) async {
     try {
       final uid = _uid;
@@ -47,10 +47,11 @@ class ShopService {
         'address': address.trim(),
         'phone': phone.trim(),
         'currency': currency,
+        'shop_type': shopType.value,
         'setup_complete': true,
+        'created_at': Timestamp.fromDate(now),
         'updated_at': Timestamp.fromDate(now),
       };
-      // Merge so the `created_at` seeded at registration is preserved.
       final batch = _firestore.batch();
       batch.set(_shopRef, shopFields, SetOptions(merge: true));
       batch.set(
@@ -106,6 +107,7 @@ class ShopService {
     String? address,
     String? phone,
     String? currency,
+    ShopType? shopType,
   }) async {
     try {
       final fields = <String, dynamic>{};
@@ -113,6 +115,7 @@ class ShopService {
       if (address != null) fields['address'] = address.trim();
       if (phone != null) fields['phone'] = phone.trim();
       if (currency != null) fields['currency'] = currency;
+      if (shopType != null) fields['shop_type'] = shopType.value;
       if (fields.isEmpty) return await getMyShop();
 
       fields['updated_at'] = Timestamp.fromDate(DateTime.now().toUtc());
@@ -155,6 +158,7 @@ class ShopService {
       address: (data['address'] as String?) ?? '',
       phone: (data['phone'] as String?) ?? '',
       currency: (data['currency'] as String?) ?? 'BDT',
+      shopType: ShopType.fromValue(data['shop_type']),
       createdAt: _toDate(data['created_at']) ?? DateTime.now(),
       updatedAt: _toDate(data['updated_at']) ?? DateTime.now(),
     );

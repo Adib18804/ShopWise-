@@ -16,7 +16,7 @@ Future<void> main() async {
   // Load .env before anything Firebase-related so DefaultFirebaseOptions
   // can read the keys.  The file is bundled as a Flutter asset (see pubspec.yaml)
   // but is excluded from git via .gitignore.
-  await dotenv.load(fileName: '.env');
+  await dotenv.load();
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -41,8 +41,7 @@ class ShopWiseApp extends StatelessWidget {
   const ShopWiseApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context) => MaterialApp(
       title: 'ShopWise',
       routes: {
         '/sales/new': (_) => const CreateSaleScreen(),
@@ -51,5 +50,4 @@ class ShopWiseApp extends StatelessWidget {
       theme: AppTheme.light,
       home: const SplashScreen(),
     );
-  }
 }

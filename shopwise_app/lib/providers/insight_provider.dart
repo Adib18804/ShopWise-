@@ -9,11 +9,11 @@ import 'auth_provider.dart';
 
 /// State for the Smart Assistant summary.
 class InsightsState {
+
+  const InsightsState({this.isLoading = false, this.summary, this.error});
   final bool isLoading;
   final SmartSummary? summary;
   final String? error;
-
-  const InsightsState({this.isLoading = false, this.summary, this.error});
 
   InsightsState copyWith({
     bool? isLoading,
@@ -69,7 +69,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
     }
   }
 
-  void clearError() => state = state.copyWith(error: null);
+  void clearError() => state = state.copyWith();
 
   // ---------------------------------------------------------------------------
   // Firestore reads
@@ -137,7 +137,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
     final soldInLast30 = <int>{}; // products that sold in the last 30 days
     final lastSaleDate = <int, DateTime>{}; // last sale date (within window)
     double todaySalesAmount = 0;
-    int todayItemsSold = 0;
+    var todayItemsSold = 0;
     // Profit: sum(selling_price × qty) – sum(purchase_price × qty) for today.
     double todayRevenue = 0; // = gross sales (same as todaySalesAmount)
     double todayCOGS = 0;    // cost of goods sold today (from invoice items)
@@ -221,7 +221,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
           daysRemaining: 0,
           suggestedRestock: _suggestRestock(p, avgDaily),
           severity: StockOutSeverity.outOfStock,
-        ));
+        ),);
         continue;
       }
 
@@ -239,7 +239,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
             severity: days < 2
                 ? StockOutSeverity.critical
                 : StockOutSeverity.warning,
-          ));
+          ),);
         }
       }
     }
@@ -249,7 +249,10 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
     final expiryAlerts = <ExpiryAlert>[];
     double totalExpiryValueAtRisk = 0;
     double expiredValue = 0;
-    int count7 = 0, count14 = 0, count30 = 0, expiredCount = 0;
+    var count7 = 0;
+    var count14 = 0;
+    var count30 = 0;
+    var expiredCount = 0;
 
     for (final b in batches) {
       if (b.expiryDate == null || b.quantity <= 0) continue;
@@ -276,7 +279,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
         purchasePrice: b.purchasePrice,
         valueAtRisk: valueAtRisk,
         severity: severity,
-      ));
+      ),);
 
       if (days < 0) {
         expiredCount++;
@@ -313,7 +316,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
         stockValue: batchValueByProduct[p.id] ??
             p.totalStock * p.defaultPurchasePrice,
         lastSaleDate: lastSaleDate[p.id],
-      ));
+      ),);
     }
     deadStockAlerts.sort((a, b) => b.stockValue.compareTo(a.stockValue));
 
@@ -367,9 +370,7 @@ class InsightsNotifier extends StateNotifier<InsightsState> {
 }
 
 final insightsProvider =
-    StateNotifierProvider<InsightsNotifier, InsightsState>((ref) {
-  return InsightsNotifier(ref);
-});
+    StateNotifierProvider<InsightsNotifier, InsightsState>(InsightsNotifier.new);
 
 // ---------------------------------------------------------------------------
 // Lightweight invoice read helpers (kept local until the sales engine in STEP 4
@@ -377,9 +378,6 @@ final insightsProvider =
 // ---------------------------------------------------------------------------
 
 class _InvoiceRead {
-  final DateTime createdAt;
-  final double totalAmount;
-  final List<_InvoiceItemRead> items;
 
   _InvoiceRead({
     required this.createdAt,
@@ -400,7 +398,7 @@ class _InvoiceRead {
         items.add(_InvoiceItemRead(
           productId: map['product_id']?.toString() ?? '',
           quantity: _toDouble(map['quantity']),
-        ));
+        ),);
       }
     }
     return _InvoiceRead(
@@ -409,12 +407,15 @@ class _InvoiceRead {
       items: items,
     );
   }
+  final DateTime createdAt;
+  final double totalAmount;
+  final List<_InvoiceItemRead> items;
 
   static double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) return 0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    return 0;
   }
 
   static DateTime _toDateTime(dynamic value) {
@@ -426,8 +427,8 @@ class _InvoiceRead {
 }
 
 class _InvoiceItemRead {
-  final String productId;
-  final double quantity;
 
   const _InvoiceItemRead({required this.productId, required this.quantity});
+  final String productId;
+  final double quantity;
 }

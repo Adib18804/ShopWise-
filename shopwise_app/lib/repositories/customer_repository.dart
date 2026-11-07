@@ -29,11 +29,9 @@ class CustomerRepository {
   // ---------------------------------------------------------------------------
 
   /// Real-time stream, sorted by name.
-  Stream<List<CustomerModel>> customersStream() {
-    return _col.orderBy('name').snapshots().map(
+  Stream<List<CustomerModel>> customersStream() => _col.orderBy('name').snapshots().map(
           (snap) => snap.docs.map(CustomerModel.fromFirestore).toList(),
         );
-  }
 
   Future<List<CustomerModel>> fetchAll() async {
     try {

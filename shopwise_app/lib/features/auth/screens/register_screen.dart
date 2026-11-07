@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/auth_provider.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../widgets/auth_text_field.dart';
-import '../widgets/auth_button.dart';
-import 'login_screen.dart';
+import '../../../providers/auth_provider.dart';
 import '../../shop/screens/shop_setup_screen.dart';
+import '../widgets/auth_button.dart';
+import '../widgets/auth_text_field.dart';
+import 'login_screen.dart';
 
 /// Register screen
 class RegisterScreen extends ConsumerStatefulWidget {
@@ -45,7 +46,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           phone: _phoneController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
-          preferredLanguage: 'bn',
         );
 
     if (!mounted) return;
@@ -85,7 +85,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(

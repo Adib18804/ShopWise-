@@ -5,12 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/insight_models.dart';
+import '../../../models/shop_model.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/customer_provider.dart';
 import '../../../providers/insight_provider.dart';
 import '../../../providers/language_provider.dart';
 import '../../../providers/reports_provider.dart';
 import '../../../providers/shop_provider.dart';
 import '../../../services/notification_service.dart';
+import '../../customers/screens/customer_list_screen.dart';
 import '../../products/screens/product_form_screen.dart';
 import '../../sales/screens/create_sale_screen.dart';
 
@@ -39,6 +42,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Future<void> _loadAll() async {
+    ref.read(customerProvider.notifier).init();
     // Load insights (Smart Assistant data) and reports (7-day chart).
     await Future.wait([
       ref.read(insightsProvider.notifier).load(),
@@ -47,7 +51,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (!mounted) return;
     final summary = ref.read(insightsProvider).summary;
     if (summary == null) return;
-    if (summary.expiryAlerts.isNotEmpty) {
+    final shopType = ref.read(shopTypeProvider);
+    if (shopType != ShopType.stationery &&
+        shopType != ShopType.library &&
+        summary.expiryAlerts.isNotEmpty) {
       await NotificationService.instance.showExpiryWarning(summary.expiryAlerts.length);
     }
     if (summary.stockOutAlerts.isNotEmpty) {
@@ -61,9 +68,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final l = ref.watch(appLocalizationsProvider);
     final auth = ref.watch(authProvider);
     final shop = ref.watch(shopProvider);
+    final shopType = ref.watch(shopTypeProvider);
     final insights = ref.watch(insightsProvider);
     final reports = ref.watch(reportsProvider);
+    final customers = ref.watch(customerProvider).customers;
     final summary = insights.summary;
+    final pendingDuesCount = customers.where((customer) => customer.hasDue).length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -96,6 +106,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               summary: summary,
               isLoading: insights.isLoading,
               l: l,
+              showExpiry: shopType != ShopType.stationery &&
+                  shopType != ShopType.library,
+              expiryFirst: shopType == ShopType.pharmacy,
             ),
             const SizedBox(height: 12),
 
@@ -110,7 +123,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             // ── Quick actions ────────────────────────────────────────────
             _SectionHeader(l.quickActions),
             const SizedBox(height: 12),
-            _QuickActionsRow(l: l),
+            _QuickActionsRow(l: l, isLibrary: shopType == ShopType.library),
             const SizedBox(height: 24),
 
             // ── Attention needed — alert list ────────────────────────────
@@ -120,19 +133,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               summary: summary,
               isLoading: insights.isLoading && summary == null,
               l: l,
+              showExpiry: shopType != ShopType.stationery &&
+                  shopType != ShopType.library,
+              expiryFirst: shopType == ShopType.pharmacy,
               onStockOut: () => _showSheet(
                   context, l, l.stockOutRisk,
                   AppColors.riskCritical, Icons.error_outline_rounded,
-                  _stockOutTiles(summary, l)),
+                  _stockOutTiles(summary, l),),
               onExpiry: () => _showSheet(
                   context, l, l.expiryRisk,
                   AppColors.riskHigh, Icons.schedule_rounded,
-                  _expiryTiles(summary, l)),
+                  _expiryTiles(summary, l),),
               onDeadStock: () => _showSheet(
                   context, l, l.deadStock,
                   AppColors.info, Icons.hourglass_bottom_rounded,
-                  _deadStockTiles(summary, l)),
+                  _deadStockTiles(summary, l),),
             ),
+            if (pendingDuesCount > 0) ...[
+              const SizedBox(height: 10),
+              _PendingDuesAlert(
+                count: pendingDuesCount,
+                isBn: l.isBn,
+                isLibrary: shopType == ShopType.library,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CustomerListScreen(),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // ── Profit & Loss ────────────────────────────────────────────
@@ -149,15 +178,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       positive: summary.todayEstimatedProfit >= 0,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _PLCard(
-                      icon: Icons.report_outlined,
-                      label: l.potentialLoss,
-                      value: l.formatAmount(summary.expiredValue),
-                      positive: summary.expiredValue == 0,
+                  if (shopType != ShopType.stationery &&
+                      shopType != ShopType.library) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _PLCard(
+                        icon: Icons.report_outlined,
+                        label: l.potentialLoss,
+                        value: l.formatAmount(summary.expiredValue),
+                        positive: summary.expiredValue == 0,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 24),
@@ -217,7 +249,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 '${l.lastSale}: ${a.lastSaleDate == null ? l.neverSold : l.formatDate(a.lastSaleDate!)}',
             trailing: l.formatAmount(a.stockValue),
             color: AppColors.info,
-          )).toList();
+          ),).toList();
 
   Future<void> _showSheet(
     BuildContext context,
@@ -226,8 +258,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     Color color,
     IconData icon,
     List<_SheetAlertItem> items,
-  ) {
-    return showModalBottomSheet<void>(
+  ) => showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -240,7 +271,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         l: l,
       ),
     );
-  }
 }
 
 // =============================================================================
@@ -248,15 +278,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 // =============================================================================
 
 class _DashboardAppBar extends StatelessWidget {
-  final String shopName;
-  final String userName;
-  final AppLocalizations l;
 
   const _DashboardAppBar({
     required this.shopName,
     required this.userName,
     required this.l,
   });
+  final String shopName;
+  final String userName;
+  final AppLocalizations l;
 
   @override
   Widget build(BuildContext context) {
@@ -290,27 +320,35 @@ class _DashboardAppBar extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary)),
+                        color: AppColors.textPrimary,),),
                 Text(l.welcome,
                     style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary)),
+                        fontSize: 12, color: AppColors.textSecondary,),),
               ],
             ),
           ),
-          _LangToggle(),
+          const _LangToggle(),
           const SizedBox(width: 4),
           CircleAvatar(
             radius: 18,
-            backgroundColor: AppColors.primaryLight.withOpacity(0.2),
+            backgroundColor: AppColors.primaryLight.withValues(alpha: 0.2),
             child: Text(initials,
                 style: const TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16)),
+                    fontSize: 16,),),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('shopName', shopName));
+    properties.add(StringProperty('userName', userName));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
 }
 
@@ -331,9 +369,9 @@ class _LangToggle extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _pill(lang == AppLanguage.bn, 'BN',
-              () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.bn)),
+              () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.bn),),
           _pill(lang == AppLanguage.en, 'EN',
-              () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.en)),
+              () => ref.read(languageProvider.notifier).setLanguage(AppLanguage.en),),
         ],
       ),
     );
@@ -366,15 +404,19 @@ class _LangToggle extends ConsumerWidget {
 // =============================================================================
 
 class _SmartSummaryCard extends StatelessWidget {
-  final SmartSummary? summary;
-  final bool isLoading;
-  final AppLocalizations l;
 
   const _SmartSummaryCard({
     required this.summary,
     required this.isLoading,
     required this.l,
+    required this.showExpiry,
+    required this.expiryFirst,
   });
+  final SmartSummary? summary;
+  final bool isLoading;
+  final AppLocalizations l;
+  final bool showExpiry;
+  final bool expiryFirst;
 
   @override
   Widget build(BuildContext context) {
@@ -389,7 +431,7 @@ class _SmartSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radiusXl),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.25),
+            color: AppColors.primary.withValues(alpha: 0.25),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -402,9 +444,9 @@ class _SmartSummaryCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(l.todaySummary,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),),
               Text(l.formatDate(DateTime.now()),
-                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),),
             ],
           ),
           const SizedBox(height: 12),
@@ -418,40 +460,59 @@ class _SmartSummaryCard extends StatelessWidget {
             ),
           ),
           Text(l.todaysSales,
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              style: const TextStyle(color: Colors.white70, fontSize: 13),),
           const SizedBox(height: 16),
           Row(
             children: [
+              if (showExpiry && expiryFirst)
+                _AlertChip(
+                  label: l.isBn ? 'মেয়াদ ঝুঁকি' : 'Expiry Risk',
+                  count: expiring,
+                  loading: isLoading,
+                ),
+              if (showExpiry && expiryFirst) const SizedBox(width: 10),
               _AlertChip(
                 label: l.isBn ? 'কম স্টক' : 'Low Stock',
                 count: stockOut,
                 loading: isLoading,
               ),
-              const SizedBox(width: 10),
-              _AlertChip(
-                label: l.isBn ? 'মেয়াদ ঝুঁকি' : 'Expiry Risk',
-                count: expiring,
-                loading: isLoading,
-              ),
+              if (showExpiry && !expiryFirst) ...[
+                const SizedBox(width: 10),
+                _AlertChip(
+                  label: l.isBn ? 'মেয়াদ ঝুঁকি' : 'Expiry Risk',
+                  count: expiring,
+                  loading: isLoading,
+                ),
+              ],
             ],
           ),
         ],
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SmartSummary?>('summary', summary));
+    properties.add(DiagnosticsProperty<bool>('isLoading', isLoading));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(DiagnosticsProperty<bool>('showExpiry', showExpiry));
+    properties.add(DiagnosticsProperty<bool>('expiryFirst', expiryFirst));
+  }
 }
 
 class _AlertChip extends StatelessWidget {
+  const _AlertChip({required this.label, required this.count, required this.loading});
   final String label;
   final int count;
   final bool loading;
-  const _AlertChip({required this.label, required this.count, required this.loading});
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.15),
+          color: Colors.white.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
@@ -464,11 +525,19 @@ class _AlertChip extends StatelessWidget {
               style: const TextStyle(
                   color: AppColors.accent,
                   fontWeight: FontWeight.w800,
-                  fontSize: 15),
+                  fontSize: 15,),
             ),
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('label', label));
+    properties.add(IntProperty('count', count));
+    properties.add(DiagnosticsProperty<bool>('loading', loading));
+  }
 }
 
 // =============================================================================
@@ -476,19 +545,18 @@ class _AlertChip extends StatelessWidget {
 // =============================================================================
 
 class _SalesTrendCard extends StatelessWidget {
-  final List<dynamic> trend; // List<SalesTrendPoint>
-  final bool isLoading;
-  final AppLocalizations l;
 
   const _SalesTrendCard({
     required this.trend,
     required this.isLoading,
     required this.l,
   });
+  final List<dynamic> trend; // List<SalesTrendPoint>
+  final bool isLoading;
+  final AppLocalizations l;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -510,7 +578,7 @@ class _SalesTrendCard extends StatelessWidget {
                 ),
               ),
               const Icon(Icons.show_chart_rounded,
-                  color: AppColors.primary, size: 18),
+                  color: AppColors.primary, size: 18,),
             ],
           ),
           const SizedBox(height: 12),
@@ -518,13 +586,13 @@ class _SalesTrendCard extends StatelessWidget {
             height: 80,
             child: isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),)
                 : trend.length < 7
                     ? Center(
                         child: Text(
                           l.isBn ? 'তথ্য নেই' : 'No data yet',
                           style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12),
+                              color: AppColors.textSecondary, fontSize: 12,),
                         ),
                       )
                     : _TrendLineChart(trend: trend, l: l),
@@ -532,13 +600,20 @@ class _SalesTrendCard extends StatelessWidget {
         ],
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IterableProperty<>('trend', trend));
+    properties.add(DiagnosticsProperty<bool>('isLoading', isLoading));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
 }
 
 class _TrendLineChart extends StatelessWidget {
+  const _TrendLineChart({required this.trend, required this.l});
   final List<dynamic> trend;
   final AppLocalizations l;
-  const _TrendLineChart({required this.trend, required this.l});
 
   @override
   Widget build(BuildContext context) {
@@ -547,7 +622,7 @@ class _TrendLineChart extends StatelessWidget {
     final amounts = trend
         .map((p) {
           final dynamic pt = p;
-          final num amount = (pt.salesAmount as num?) ?? 0;
+          final amount = (pt.salesAmount as num?) ?? 0;
           return amount.toDouble();
         })
         .toList();
@@ -556,32 +631,28 @@ class _TrendLineChart extends StatelessWidget {
         ? 100.0
         : (amounts.reduce((a, b) => a > b ? a : b) * 1.2).clamp(1.0, double.infinity);
 
-    final spots = amounts.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), e.value);
-    }).toList();
+    final spots = amounts.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList();
 
     return LineChart(
       LineChartData(
         minY: 0,
         maxY: maxY,
         gridData: FlGridData(
-          show: true,
           drawVerticalLine: false,
           horizontalInterval: maxY / 2,
-          getDrawingHorizontalLine: (_) => FlLine(
+          getDrawingHorizontalLine: (_) => const FlLine(
             color: AppColors.border,
             strokeWidth: 1,
           ),
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(),
+          rightTitles: const AxisTitles(),
+          leftTitles: const AxisTitles(),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 22,
               interval: 1,
               getTitlesWidget: (value, meta) {
                 final idx = value.toInt();
@@ -589,7 +660,7 @@ class _TrendLineChart extends StatelessWidget {
                   return const SizedBox.shrink();
                 }
                 final dynamic pt = trend[idx];
-                final String dateStr = (pt.date as String?) ?? '';
+                final dateStr = (pt.date as String?) ?? '';
                 final parsed = DateTime.tryParse(dateStr);
                 final label = parsed == null
                     ? ''
@@ -601,7 +672,7 @@ class _TrendLineChart extends StatelessWidget {
                   child: Text(
                     label,
                     style: const TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary),
+                        fontSize: 10, color: AppColors.textSecondary,),
                   ),
                 );
               },
@@ -612,11 +683,9 @@ class _TrendLineChart extends StatelessWidget {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            curveSmoothness: 0.35,
             color: AppColors.primary,
             barWidth: 2.5,
             dotData: FlDotData(
-              show: true,
               getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
                 radius: 3,
                 color: AppColors.primary,
@@ -628,8 +697,8 @@ class _TrendLineChart extends StatelessWidget {
               show: true,
               gradient: LinearGradient(
                 colors: [
-                  AppColors.primary.withOpacity(0.18),
-                  AppColors.primary.withOpacity(0.0),
+                  AppColors.primary.withValues(alpha: 0.18),
+                  AppColors.primary.withValues(alpha: 0),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -646,8 +715,8 @@ class _TrendLineChart extends StatelessWidget {
                       const TextStyle(
                           color: Colors.white,
                           fontSize: 11,
-                          fontWeight: FontWeight.w600),
-                    ))
+                          fontWeight: FontWeight.w600,),
+                    ),)
                 .toList(),
           ),
         ),
@@ -659,6 +728,13 @@ class _TrendLineChart extends StatelessWidget {
       ['সো', 'মঙ', 'বু', 'বৃ', 'শু', 'শ', 'র'][w - 1];
   static String _enWeekdayShort(int w) =>
       ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'][w - 1];
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IterableProperty<>('trend', trend));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 // =============================================================================
@@ -666,8 +742,8 @@ class _TrendLineChart extends StatelessWidget {
 // =============================================================================
 
 class _SectionHeader extends StatelessWidget {
-  final String text;
   const _SectionHeader(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) => Text(
@@ -675,23 +751,32 @@ class _SectionHeader extends StatelessWidget {
         style: const TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary),
+            color: AppColors.textPrimary,),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('text', text));
+  }
 }
 
 class _QuickActionsRow extends StatelessWidget {
+  const _QuickActionsRow({required this.l, required this.isLibrary});
   final AppLocalizations l;
-  const _QuickActionsRow({required this.l});
+  final bool isLibrary;
 
   @override
   Widget build(BuildContext context) => Row(
         children: [
           _QuickCard(
             icon: Icons.point_of_sale_rounded,
-            label: l.isBn ? 'বিক্রি করুন' : 'Record Sale',
+            label: isLibrary
+                ? (l.isBn ? 'বই ইস্যু' : 'Issue Book')
+                : (l.isBn ? 'বিক্রি করুন' : 'Record Sale'),
             iconColor: AppColors.primary,
             onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const CreateSaleScreen())),
+                MaterialPageRoute<void>(builder: (_) => const CreateSaleScreen()),),
           ),
           const SizedBox(width: 10),
           _QuickCard(
@@ -706,23 +791,30 @@ class _QuickActionsRow extends StatelessWidget {
             label: l.addProduct,
             iconColor: AppColors.success,
             onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const ProductFormScreen())),
+                MaterialPageRoute<void>(builder: (_) => const ProductFormScreen()),),
           ),
         ],
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
+  }
 }
 
 class _QuickCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color iconColor;
-  final VoidCallback onTap;
   const _QuickCard({
     required this.icon,
     required this.label,
     required this.iconColor,
     required this.onTap,
   });
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Expanded(
@@ -732,7 +824,7 @@ class _QuickCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-            splashColor: iconColor.withOpacity(0.1),
+            splashColor: iconColor.withValues(alpha: 0.1),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
               decoration: BoxDecoration(
@@ -746,7 +838,7 @@ class _QuickCard extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.1),
+                      color: iconColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(icon, color: iconColor, size: 20),
@@ -760,7 +852,7 @@ class _QuickCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary),
+                        color: AppColors.textPrimary,),
                   ),
                 ],
               ),
@@ -768,6 +860,15 @@ class _QuickCard extends StatelessWidget {
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(StringProperty('label', label));
+    properties.add(ColorProperty('iconColor', iconColor));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+  }
 }
 
 // =============================================================================
@@ -775,21 +876,25 @@ class _QuickCard extends StatelessWidget {
 // =============================================================================
 
 class _AttentionList extends StatelessWidget {
-  final SmartSummary? summary;
-  final bool isLoading;
-  final AppLocalizations l;
-  final VoidCallback onStockOut;
-  final VoidCallback onExpiry;
-  final VoidCallback onDeadStock;
 
   const _AttentionList({
     required this.summary,
     required this.isLoading,
     required this.l,
+    required this.showExpiry,
+    required this.expiryFirst,
     required this.onStockOut,
     required this.onExpiry,
     required this.onDeadStock,
   });
+  final SmartSummary? summary;
+  final bool isLoading;
+  final AppLocalizations l;
+  final bool showExpiry;
+  final bool expiryFirst;
+  final VoidCallback onStockOut;
+  final VoidCallback onExpiry;
+  final VoidCallback onDeadStock;
 
   @override
   Widget build(BuildContext context) {
@@ -797,24 +902,24 @@ class _AttentionList extends StatelessWidget {
       return const Center(
           child: Padding(
               padding: EdgeInsets.symmetric(vertical: 32),
-              child: CircularProgressIndicator(strokeWidth: 2)));
+              child: CircularProgressIndicator(strokeWidth: 2),),);
     }
 
     final stockAlert = summary?.stockOutAlerts.firstOrNull;
-    final expiryAlert = summary?.expiryAlerts.firstOrNull;
+    final expiryAlert = showExpiry ? summary?.expiryAlerts.firstOrNull : null;
     final deadAlert = summary?.deadStockAlerts.firstOrNull;
 
     final hasAnyAlert =
         (summary?.stockOutAlerts.isNotEmpty ?? false) ||
-        (summary?.expiryAlerts.isNotEmpty ?? false) ||
+        (showExpiry && (summary?.expiryAlerts.isNotEmpty ?? false)) ||
         (summary?.deadStockAlerts.isNotEmpty ?? false);
 
     if (!hasAnyAlert && summary != null) return _NoAlertsCard(l: l);
 
-    return Column(
-      children: [
-        if (stockAlert != null)
-          _AlertListItem(
+    final items = <Widget>[];
+    final stockWidget = stockAlert == null
+        ? null
+        : _AlertListItem(
             icon: Icons.error_outline_rounded,
             accentColor: AppColors.riskCritical,
             title: stockAlert.productName,
@@ -823,42 +928,112 @@ class _AttentionList extends StatelessWidget {
                 : l.runsOutIn(stockAlert.daysRemaining),
             count: summary?.stockOutAlerts.length ?? 0,
             onTap: onStockOut,
-          ),
-        if (stockAlert != null && (expiryAlert != null || deadAlert != null))
-          const SizedBox(height: 8),
-        if (expiryAlert != null)
-          _AlertListItem(
+          );
+    final expiryWidget = expiryAlert == null
+        ? null
+        : _AlertListItem(
             icon: Icons.schedule_rounded,
-            accentColor: AppColors.riskHigh,
+            accentColor:
+                expiryFirst ? AppColors.riskCritical : AppColors.riskHigh,
             title: expiryAlert.productName,
             subtitle: expiryAlert.daysUntilExpiry < 0
                 ? l.expired
                 : l.expiresIn(expiryAlert.daysUntilExpiry),
             count: summary?.expiryAlerts.length ?? 0,
             onTap: onExpiry,
-          ),
-        if (expiryAlert != null && deadAlert != null) const SizedBox(height: 8),
-        if (deadAlert != null)
-          _AlertListItem(
+          );
+    final deadWidget = deadAlert == null
+        ? null
+        : _AlertListItem(
             icon: Icons.hourglass_bottom_rounded,
             accentColor: AppColors.info,
             title: deadAlert.productName,
             subtitle: l.noSalesIn30,
             count: summary?.deadStockAlerts.length ?? 0,
             onTap: onDeadStock,
+          );
+    final ordered = expiryFirst
+        ? [expiryWidget, stockWidget, deadWidget]
+        : [stockWidget, expiryWidget, deadWidget];
+    for (final item in ordered.whereType<Widget>()) {
+      if (items.isNotEmpty) items.add(const SizedBox(height: 8));
+      items.add(item);
+    }
+    return Column(children: items);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SmartSummary?>('summary', summary));
+    properties.add(DiagnosticsProperty<bool>('isLoading', isLoading));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(DiagnosticsProperty<bool>('showExpiry', showExpiry));
+    properties.add(DiagnosticsProperty<bool>('expiryFirst', expiryFirst));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onStockOut', onStockOut));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onExpiry', onExpiry));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onDeadStock', onDeadStock));
+  }
+}
+
+class _PendingDuesAlert extends StatelessWidget {
+
+  const _PendingDuesAlert({
+    required this.count,
+    required this.isBn,
+    required this.isLibrary,
+    required this.onTap,
+  });
+  final int count;
+  final bool isBn;
+  final bool isLibrary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.riskMedium.withValues(alpha: 0.45)),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            ),
+            child: Row(children: [
+              const Icon(Icons.account_balance_wallet_outlined,
+                  color: AppColors.riskHigh,),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isBn
+                      ? '$count জন ${isLibrary ? 'সদস্য' : 'গ্রাহক'}-এর বাকি টাকা রয়েছে'
+                      : 'You have $count ${isLibrary ? 'members' : 'customers'} with pending dues.',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            ],),
           ),
-      ],
-    );
+        ),
+      );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('count', count));
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+    properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
   }
 }
 
 class _AlertListItem extends StatelessWidget {
-  final IconData icon;
-  final Color accentColor;
-  final String title;
-  final String subtitle;
-  final int count;
-  final VoidCallback onTap;
 
   const _AlertListItem({
     required this.icon,
@@ -868,6 +1043,12 @@ class _AlertListItem extends StatelessWidget {
     required this.count,
     required this.onTap,
   });
+  final IconData icon;
+  final Color accentColor;
+  final String title;
+  final String subtitle;
+  final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -889,15 +1070,15 @@ class _AlertListItem extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                       color: accentColor,
-                      borderRadius: BorderRadius.circular(2)),
+                      borderRadius: BorderRadius.circular(2),),
                 ),
                 const SizedBox(width: 12),
                 Container(
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.1),
-                      shape: BoxShape.circle),
+                      color: accentColor.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,),
                   child: Icon(icon, color: accentColor, size: 20),
                 ),
                 const SizedBox(width: 12),
@@ -909,13 +1090,13 @@ class _AlertListItem extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary)),
+                              color: AppColors.textPrimary,),),
                       const SizedBox(height: 2),
                       Text(subtitle,
                           style: TextStyle(
                               fontSize: 12,
                               color: accentColor,
-                              fontWeight: FontWeight.w500)),
+                              fontWeight: FontWeight.w500,),),
                     ],
                   ),
                 ),
@@ -923,52 +1104,69 @@ class _AlertListItem extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(30)),
+                        color: accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(30),),
                     child: Text('+${count - 1}',
                         style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: accentColor)),
+                            color: accentColor,),),
                   ),
                   const SizedBox(width: 6),
                 ],
                 const Icon(Icons.chevron_right,
-                    size: 18, color: AppColors.textDisabled),
+                    size: 18, color: AppColors.textDisabled,),
               ],
             ),
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(ColorProperty('accentColor', accentColor));
+    properties.add(StringProperty('title', title));
+    properties.add(StringProperty('subtitle', subtitle));
+    properties.add(IntProperty('count', count));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+  }
 }
 
 class _NoAlertsCard extends StatelessWidget {
-  final AppLocalizations l;
   const _NoAlertsCard({required this.l});
+  final AppLocalizations l;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.success.withOpacity(0.08),
+          color: AppColors.success.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          border: Border.all(color: AppColors.success.withOpacity(0.25)),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
         ),
         child: Row(
           children: [
             const Icon(Icons.check_circle_outline_rounded,
-                color: AppColors.success, size: 28),
+                color: AppColors.success, size: 28,),
             const SizedBox(width: 14),
             Expanded(
               child: Text(l.noAlerts,
                   style: const TextStyle(
                       color: AppColors.success,
                       fontWeight: FontWeight.w600,
-                      fontSize: 14)),
+                      fontSize: 14,),),
             ),
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 // =============================================================================
@@ -976,16 +1174,16 @@ class _NoAlertsCard extends StatelessWidget {
 // =============================================================================
 
 class _PLCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool positive;
   const _PLCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.positive,
   });
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool positive;
 
   @override
   Widget build(BuildContext context) {
@@ -1007,19 +1205,28 @@ class _PLCard extends StatelessWidget {
               Expanded(
                 child: Text(label,
                     style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary),
+                        fontSize: 11, color: AppColors.textSecondary,),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
+                    overflow: TextOverflow.ellipsis,),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(value,
               style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+                  fontSize: 18, fontWeight: FontWeight.w800, color: color,),),
         ],
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(StringProperty('label', label));
+    properties.add(StringProperty('value', value));
+    properties.add(DiagnosticsProperty<bool>('positive', positive));
   }
 }
 
@@ -1028,9 +1235,9 @@ class _PLCard extends StatelessWidget {
 // =============================================================================
 
 class _SmartRecommendationCard extends StatelessWidget {
+  const _SmartRecommendationCard({required this.summary, required this.l});
   final SmartSummary summary;
   final AppLocalizations l;
-  const _SmartRecommendationCard({required this.summary, required this.l});
 
   @override
   Widget build(BuildContext context) {
@@ -1053,7 +1260,7 @@ class _SmartRecommendationCard extends StatelessWidget {
             colors: [Color(0xFFFFF8F2), Color(0xFFFFF1E0)],
           ),
           borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-          border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1065,11 +1272,11 @@ class _SmartRecommendationCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.15),
+                    color: AppColors.accent.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.accent, size: 20),
+                      color: AppColors.accent, size: 20,),
                 ),
                 const SizedBox(width: 10),
                 Text(
@@ -1077,7 +1284,7 @@ class _SmartRecommendationCard extends StatelessWidget {
                   style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.accentDark),
+                      color: AppColors.accentDark,),
                 ),
                 const Spacer(),
                 // "All recommendations" link
@@ -1089,7 +1296,7 @@ class _SmartRecommendationCard extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.primary,
-                          fontWeight: FontWeight.w600),
+                          fontWeight: FontWeight.w600,),
                     ),
                   ),
               ],
@@ -1101,7 +1308,7 @@ class _SmartRecommendationCard extends StatelessWidget {
                   ? '${topAlert.productName} এর স্টক কম হতে পারে। সাম্প্রতিক বিক্রির ভিত্তিতে ~$suggestion রিস্টক বিবেচনা করুন।'
                   : '${topAlert.productName} stock may need attention. Based on recent sales, consider restocking ~$suggestion.',
               style: const TextStyle(
-                  fontSize: 14, color: AppColors.textPrimary, height: 1.5),
+                  fontSize: 14, color: AppColors.textPrimary, height: 1.5,),
             ),
             const SizedBox(height: 12),
             // "Why am I seeing this?" — opens full bottom sheet
@@ -1110,26 +1317,26 @@ class _SmartRecommendationCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.06),
+                  color: AppColors.primary.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.info_outline_rounded,
-                        size: 16, color: AppColors.primary),
+                        size: 16, color: AppColors.primary,),
                     const SizedBox(width: 6),
                     Text(
                       l.isBn ? 'কেন দেখছি?' : 'Why am I seeing this?',
                       style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.primary,
-                          fontWeight: FontWeight.w600),
+                          fontWeight: FontWeight.w600,),
                     ),
                     const SizedBox(width: 4),
                     const Icon(Icons.open_in_new_rounded,
-                        size: 13, color: AppColors.primary),
+                        size: 13, color: AppColors.primary,),
                   ],
                 ),
               ),
@@ -1159,6 +1366,13 @@ class _SmartRecommendationCard extends StatelessWidget {
       builder: (_) => _AllRecommendationsSheet(summary: summary, l: l),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SmartSummary>('summary', summary));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 // =============================================================================
@@ -1168,9 +1382,9 @@ class _SmartRecommendationCard extends StatelessWidget {
 /// Deep-dive explanation sheet for a single stock-out alert.
 /// Shows step-by-step logic in simple Bengali + English.
 class _WhyBottomSheet extends StatelessWidget {
+  const _WhyBottomSheet({required this.alert, required this.l});
   final StockOutAlert alert;
   final AppLocalizations l;
-  const _WhyBottomSheet({required this.alert, required this.l});
 
   @override
   Widget build(BuildContext context) {
@@ -1186,7 +1400,7 @@ class _WhyBottomSheet extends StatelessWidget {
 
     return Container(
       constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.75),
+          maxHeight: MediaQuery.of(context).size.height * 0.75,),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1202,7 +1416,7 @@ class _WhyBottomSheet extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2)),
+                  borderRadius: BorderRadius.circular(2),),
             ),
           ),
           // Sheet header
@@ -1214,11 +1428,11 @@ class _WhyBottomSheet extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.12),
+                    color: AppColors.accent.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.lightbulb_outline_rounded,
-                      color: AppColors.accent, size: 22),
+                      color: AppColors.accent, size: 22,),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1230,12 +1444,12 @@ class _WhyBottomSheet extends StatelessWidget {
                         style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary),
+                            color: AppColors.textPrimary,),
                       ),
                       Text(
                         alert.productName,
                         style: const TextStyle(
-                            fontSize: 13, color: AppColors.textSecondary),
+                            fontSize: 13, color: AppColors.textSecondary,),
                       ),
                     ],
                   ),
@@ -1258,10 +1472,10 @@ class _WhyBottomSheet extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withOpacity(0.07),
+                      color: AppColors.accent.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                       border: Border.all(
-                          color: AppColors.accent.withOpacity(0.25)),
+                          color: AppColors.accent.withValues(alpha: 0.25),),
                     ),
                     child: Text(
                       isBn
@@ -1273,18 +1487,18 @@ class _WhyBottomSheet extends StatelessWidget {
                           fontSize: 14,
                           color: AppColors.textPrimary,
                           height: 1.6,
-                          fontWeight: FontWeight.w500),
+                          fontWeight: FontWeight.w500,),
                     ),
                   ),
                   const SizedBox(height: 20),
 
                   // Step-by-step logic blocks
                   Text(
-                    isBn ? 'লজিকটি এভাবে কাজ করে:' : 'Here\'s how the logic works:',
+                    isBn ? 'লজিকটি এভাবে কাজ করে:' : "Here's how the logic works:",
                     style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary),
+                        color: AppColors.textPrimary,),
                   ),
                   const SizedBox(height: 12),
                   _LogicStep(
@@ -1335,7 +1549,7 @@ class _WhyBottomSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Icon(Icons.info_outline,
-                            size: 16, color: AppColors.textSecondary),
+                            size: 16, color: AppColors.textSecondary,),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1346,7 +1560,7 @@ class _WhyBottomSheet extends StatelessWidget {
                             style: const TextStyle(
                                 fontSize: 11,
                                 color: AppColors.textSecondary,
-                                height: 1.5),
+                                height: 1.5,),
                           ),
                         ),
                       ],
@@ -1360,13 +1574,16 @@ class _WhyBottomSheet extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<StockOutAlert>('alert', alert));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 class _LogicStep extends StatelessWidget {
-  final int step;
-  final String title;
-  final String body;
-  final bool highlight;
 
   const _LogicStep({
     required this.step,
@@ -1374,6 +1591,10 @@ class _LogicStep extends StatelessWidget {
     required this.body,
     this.highlight = false,
   });
+  final int step;
+  final String title;
+  final String body;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -1382,12 +1603,12 @@ class _LogicStep extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: highlight
-            ? AppColors.primary.withOpacity(0.05)
+            ? AppColors.primary.withValues(alpha: 0.05)
             : AppColors.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         border: Border.all(
           color: highlight
-              ? AppColors.primary.withOpacity(0.2)
+              ? AppColors.primary.withValues(alpha: 0.2)
               : AppColors.border,
         ),
       ),
@@ -1398,7 +1619,7 @@ class _LogicStep extends StatelessWidget {
             width: 24,
             height: 24,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Center(
@@ -1407,7 +1628,7 @@ class _LogicStep extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: color),
+                    color: color,),
               ),
             ),
           ),
@@ -1420,13 +1641,13 @@ class _LogicStep extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: color)),
+                        color: color,),),
                 const SizedBox(height: 2),
                 Text(body,
                     style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textPrimary,
-                        height: 1.45)),
+                        height: 1.45,),),
               ],
             ),
           ),
@@ -1434,17 +1655,25 @@ class _LogicStep extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('step', step));
+    properties.add(StringProperty('title', title));
+    properties.add(StringProperty('body', body));
+    properties.add(DiagnosticsProperty<bool>('highlight', highlight));
+  }
 }
 
 /// Shows all stock-out alerts with their "Why" explanation in one sheet.
 class _AllRecommendationsSheet extends StatelessWidget {
+  const _AllRecommendationsSheet({required this.summary, required this.l});
   final SmartSummary summary;
   final AppLocalizations l;
-  const _AllRecommendationsSheet({required this.summary, required this.l});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
       decoration: const BoxDecoration(
@@ -1461,7 +1690,7 @@ class _AllRecommendationsSheet extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2)),
+                  borderRadius: BorderRadius.circular(2),),
             ),
           ),
           Padding(
@@ -1469,7 +1698,7 @@ class _AllRecommendationsSheet extends StatelessWidget {
             child: Row(
               children: [
                 const Icon(Icons.lightbulb_outline_rounded,
-                    color: AppColors.accent, size: 22),
+                    color: AppColors.accent, size: 22,),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -1477,7 +1706,7 @@ class _AllRecommendationsSheet extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary),
+                        color: AppColors.textPrimary,),
                   ),
                 ),
                 IconButton(
@@ -1540,7 +1769,7 @@ class _AllRecommendationsSheet extends StatelessWidget {
                                     style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.textPrimary)),
+                                        color: AppColors.textPrimary,),),
                                 const SizedBox(height: 3),
                                 Text(
                                   l.isBn
@@ -1550,13 +1779,13 @@ class _AllRecommendationsSheet extends StatelessWidget {
                                           '~$suggestion restock needed',
                                   style: const TextStyle(
                                       fontSize: 12,
-                                      color: AppColors.textSecondary),
+                                      color: AppColors.textSecondary,),
                                 ),
                               ],
                             ),
                           ),
                           const Icon(Icons.chevron_right,
-                              size: 18, color: AppColors.textDisabled),
+                              size: 18, color: AppColors.textDisabled,),
                         ],
                       ),
                     ),
@@ -1568,6 +1797,12 @@ class _AllRecommendationsSheet extends StatelessWidget {
         ],
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<SmartSummary>('summary', summary));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
 }
 
@@ -1576,26 +1811,20 @@ class _AllRecommendationsSheet extends StatelessWidget {
 // =============================================================================
 
 class _SheetAlertItem {
+  const _SheetAlertItem({
+    required this.title,
+    required this.subtitle,
+    required this.color, this.meta,
+    this.trailing,
+  });
   final String title;
   final String subtitle;
   final String? meta;
   final String? trailing;
   final Color color;
-  const _SheetAlertItem({
-    required this.title,
-    required this.subtitle,
-    this.meta,
-    this.trailing,
-    required this.color,
-  });
 }
 
 class _AlertBottomSheet extends StatelessWidget {
-  final String title;
-  final Color color;
-  final IconData icon;
-  final List<_SheetAlertItem> items;
-  final AppLocalizations l;
   const _AlertBottomSheet({
     required this.title,
     required this.color,
@@ -1603,10 +1832,14 @@ class _AlertBottomSheet extends StatelessWidget {
     required this.items,
     required this.l,
   });
+  final String title;
+  final Color color;
+  final IconData icon;
+  final List<_SheetAlertItem> items;
+  final AppLocalizations l;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
       decoration: const BoxDecoration(
@@ -1623,7 +1856,7 @@ class _AlertBottomSheet extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2)),
+                  borderRadius: BorderRadius.circular(2),),
             ),
           ),
           Padding(
@@ -1634,8 +1867,8 @@ class _AlertBottomSheet extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                      color: color.withOpacity(0.12),
-                      shape: BoxShape.circle),
+                      color: color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,),
                   child: Icon(icon, color: color, size: 22),
                 ),
                 const SizedBox(width: 12),
@@ -1644,22 +1877,22 @@ class _AlertBottomSheet extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary)),
+                          color: AppColors.textPrimary,),),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                      horizontal: 10, vertical: 4,),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text('${items.length}',
                       style: TextStyle(
-                          color: color, fontWeight: FontWeight.w700)),
+                          color: color, fontWeight: FontWeight.w700,),),
                 ),
                 IconButton(
                     icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.of(context).pop()),
+                    onPressed: () => Navigator.of(context).pop(),),
               ],
             ),
           ),
@@ -1668,7 +1901,7 @@ class _AlertBottomSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
               child: Text(l.noAlertsHere,
-                  style: const TextStyle(color: AppColors.textSecondary)),
+                  style: const TextStyle(color: AppColors.textSecondary),),
             )
           else
             Flexible(
@@ -1681,9 +1914,9 @@ class _AlertBottomSheet extends StatelessWidget {
                   return Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: item.color.withOpacity(0.05),
+                      color: item.color.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                      border: Border.all(color: item.color.withOpacity(0.18)),
+                      border: Border.all(color: item.color.withValues(alpha: 0.18)),
                     ),
                     child: Row(
                       children: [
@@ -1704,18 +1937,18 @@ class _AlertBottomSheet extends StatelessWidget {
                                   style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary)),
+                                      color: AppColors.textPrimary,),),
                               const SizedBox(height: 2),
                               Text(item.subtitle,
                                   style: TextStyle(
                                       fontSize: 12,
                                       color: item.color,
-                                      fontWeight: FontWeight.w500)),
+                                      fontWeight: FontWeight.w500,),),
                               if (item.meta != null)
                                 Text(item.meta!,
                                     style: const TextStyle(
                                         fontSize: 11,
-                                        color: AppColors.textSecondary)),
+                                        color: AppColors.textSecondary,),),
                             ],
                           ),
                         ),
@@ -1724,7 +1957,7 @@ class _AlertBottomSheet extends StatelessWidget {
                               style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
-                                  color: item.color)),
+                                  color: item.color,),),
                       ],
                     ),
                   );
@@ -1734,6 +1967,15 @@ class _AlertBottomSheet extends StatelessWidget {
         ],
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('title', title));
+    properties.add(ColorProperty('color', color));
+    properties.add(DiagnosticsProperty<IconData>('icon', icon));
+    properties.add(IterableProperty<_SheetAlertItem>('items', items));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
   }
 }
 
@@ -1742,21 +1984,21 @@ class _AlertBottomSheet extends StatelessWidget {
 // =============================================================================
 
 class _ErrorBanner extends StatelessWidget {
-  final String message;
-  final String retryLabel;
-  final VoidCallback onRetry;
   const _ErrorBanner(
       {required this.message,
       required this.retryLabel,
-      required this.onRetry});
+      required this.onRetry,});
+  final String message;
+  final String retryLabel;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.08),
+          color: AppColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-          border: Border.all(color: AppColors.error.withOpacity(0.3)),
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -1765,17 +2007,25 @@ class _ErrorBanner extends StatelessWidget {
             Expanded(
               child: Text(message,
                   style: const TextStyle(
-                      color: AppColors.error, fontSize: 13)),
+                      color: AppColors.error, fontSize: 13,),),
             ),
             TextButton(
               onPressed: onRetry,
               style: TextButton.styleFrom(
                   foregroundColor: AppColors.error,
-                  padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),),
               child: Text(retryLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                  style: const TextStyle(fontWeight: FontWeight.w700),),
             ),
           ],
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('message', message));
+    properties.add(StringProperty('retryLabel', retryLabel));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onRetry', onRetry));
+  }
 }

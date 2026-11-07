@@ -1,20 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/product_provider.dart';
-import '../../../providers/category_provider.dart';
-import '../../../models/product_model.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../../../features/auth/widgets/auth_text_field.dart';
 import '../../../features/auth/widgets/auth_button.dart';
+import '../../../features/auth/widgets/auth_text_field.dart';
+import '../../../models/product_model.dart';
+import '../../../models/shop_model.dart';
+import '../../../providers/category_provider.dart';
+import '../../../providers/language_provider.dart';
+import '../../../providers/product_provider.dart';
+import '../../../providers/shop_provider.dart';
 
 /// Product form screen (add/edit)
 class ProductFormScreen extends ConsumerStatefulWidget {
-  final ProductModel? product;
 
   const ProductFormScreen({super.key, this.product});
+  final ProductModel? product;
 
   @override
   ConsumerState<ProductFormScreen> createState() => _ProductFormScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<ProductModel?>('product', product));
+  }
 }
 
 class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
@@ -22,6 +32,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   final _nameController = TextEditingController();
   final _skuController = TextEditingController();
   final _barcodeController = TextEditingController();
+  final _authorController = TextEditingController();
+  final _isbnController = TextEditingController();
   final _sellingPriceController = TextEditingController();
   final _purchasePriceController = TextEditingController();
   final _minimumStockController = TextEditingController();
@@ -52,6 +64,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       _nameController.text = widget.product!.name;
       _skuController.text = widget.product!.sku ?? '';
       _barcodeController.text = widget.product!.barcode ?? '';
+      _authorController.text = widget.product!.author ?? '';
+      _isbnController.text = widget.product!.isbn ?? '';
       _selectedCategoryId = widget.product!.categoryId;
       _selectedUnit = widget.product!.unit;
       _sellingPriceController.text = widget.product!.sellingPrice.toString();
@@ -71,6 +85,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _nameController.dispose();
     _skuController.dispose();
     _barcodeController.dispose();
+    _authorController.dispose();
+    _isbnController.dispose();
     _sellingPriceController.dispose();
     _purchasePriceController.dispose();
     _minimumStockController.dispose();
@@ -79,6 +95,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _handleSubmit() async {
+    final isLibrary = ref.read(shopTypeProvider) == ShopType.library;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -104,9 +121,13 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               barcode: _barcodeController.text.trim().isEmpty
                   ? null
                   : _barcodeController.text.trim(),
+              author: isLibrary ? _authorController.text.trim() : null,
+              isbn: isLibrary ? _isbnController.text.trim() : null,
               unit: _selectedUnit,
               sellingPrice: double.parse(_sellingPriceController.text),
-              defaultPurchasePrice: double.parse(_purchasePriceController.text),
+              defaultPurchasePrice: isLibrary
+                  ? (widget.product?.defaultPurchasePrice ?? 0)
+                  : double.parse(_purchasePriceController.text),
               minimumStock: double.parse(_minimumStockController.text),
               targetStockDays: int.parse(_targetStockDaysController.text),
             )
@@ -117,9 +138,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               barcode: _barcodeController.text.trim().isEmpty
                   ? null
                   : _barcodeController.text.trim(),
+              author: isLibrary ? _authorController.text.trim() : null,
+              isbn: isLibrary ? _isbnController.text.trim() : null,
               unit: _selectedUnit,
               sellingPrice: double.parse(_sellingPriceController.text),
-              defaultPurchasePrice: double.parse(_purchasePriceController.text),
+              defaultPurchasePrice:
+                  isLibrary ? 0 : double.parse(_purchasePriceController.text),
               minimumStock: double.parse(_minimumStockController.text),
               targetStockDays: int.parse(_targetStockDaysController.text),
             );
@@ -144,6 +168,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   @override
   Widget build(BuildContext context) {
     final categoryState = ref.watch(categoryProvider);
+    final isPharmacy = ref.watch(shopTypeProvider) == ShopType.pharmacy;
+    final isLibrary = ref.watch(shopTypeProvider) == ShopType.library;
+    final isBn = ref.watch(appLocalizationsProvider).isBn;
 
     return Scaffold(
       appBar: AppBar(
@@ -152,7 +179,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
           child: Column(
@@ -163,7 +190,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 controller: _nameController,
                 label: 'পণ্যের নাম *',
                 hint: 'যেমন: দুধ, চাল',
-                keyboardType: TextInputType.text,
                 prefixIcon: const Icon(Icons.inventory_2),
                 enabled: !_isSubmitting,
                 validator: (value) {
@@ -204,12 +230,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         isExpanded: true,
                         hint: const Text('ক্যাটাগরি নির্বাচন করুন'),
                         icon: const Icon(Icons.arrow_drop_down),
-                        items: categoryState.categories.map((category) {
-                          return DropdownMenuItem<int>(
+                        items: categoryState.categories.map((category) => DropdownMenuItem<int>(
                             value: category.id,
                             child: Text(category.name),
-                          );
-                        }).toList(),
+                          ),).toList(),
                         onChanged: _isSubmitting
                             ? null
                             : (value) {
@@ -227,7 +251,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 controller: _skuController,
                 label: 'SKU (ঐচ্ছিক)',
                 hint: 'পণ্যের কোড',
-                keyboardType: TextInputType.text,
                 prefixIcon: const Icon(Icons.qr_code_2),
                 enabled: !_isSubmitting,
               ),
@@ -236,11 +259,41 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 controller: _barcodeController,
                 label: 'বারকোড (ঐচ্ছিক)',
                 hint: 'পণ্যের বারকোড',
-                keyboardType: TextInputType.text,
                 prefixIcon: const Icon(Icons.qr_code),
                 enabled: !_isSubmitting,
               ),
               const SizedBox(height: 16),
+
+              if (isLibrary) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    isBn ? 'বইয়ের তথ্য' : 'Book Details',
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AuthTextField(
+                  controller: _authorController,
+                  label: isBn ? 'লেখক' : 'Author',
+                  hint: isBn ? 'লেখকের নাম' : 'Author name',
+                  keyboardType: TextInputType.name,
+                  prefixIcon: const Icon(Icons.person_outline),
+                  enabled: !_isSubmitting,
+                ),
+                const SizedBox(height: 12),
+                AuthTextField(
+                  controller: _isbnController,
+                  label: 'ISBN',
+                  hint: 'ISBN',
+                  prefixIcon: const Icon(Icons.menu_book_outlined),
+                  enabled: !_isSubmitting,
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // Unit dropdown
               Column(
@@ -267,12 +320,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                         value: _selectedUnit,
                         isExpanded: true,
                         icon: const Icon(Icons.arrow_drop_down),
-                        items: _units.map((unit) {
-                          return DropdownMenuItem<String>(
+                        items: _units.map((unit) => DropdownMenuItem<String>(
                             value: unit['value'],
                             child: Text(unit['label']!),
-                          );
-                        }).toList(),
+                          ),).toList(),
                         onChanged: _isSubmitting
                             ? null
                             : (value) {
@@ -298,16 +349,19 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 validator: _validateNonNegativeDecimal('বিক্রয় মূল্য'),
               ),
               const SizedBox(height: 16),
-              AuthTextField(
-                controller: _purchasePriceController,
-                label: 'সাধারণ ক্রয় মূল্য *',
-                hint: '0.00',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                prefixIcon: const Icon(Icons.shopping_bag),
-                enabled: !_isSubmitting,
-                validator: _validateNonNegativeDecimal('ক্রয় মূল্য'),
-              ),
-              const SizedBox(height: 16),
+              if (!isLibrary) ...[
+                AuthTextField(
+                  controller: _purchasePriceController,
+                  label: 'সাধারণ ক্রয় মূল্য *',
+                  hint: '0.00',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  prefixIcon: const Icon(Icons.shopping_bag),
+                  enabled: !_isSubmitting,
+                  validator: _validateNonNegativeDecimal('ক্রয় মূল্য'),
+                ),
+                const SizedBox(height: 16),
+              ],
               AuthTextField(
                 controller: _minimumStockController,
                 label: 'সর্বনিম্ন স্টক',
@@ -331,6 +385,31 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   return null;
                 },
               ),
+              if (isPharmacy) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.medication_outlined, color: AppColors.accentDark),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          isBn
+                              ? 'ওষুধের স্টক যোগ করার সময় ব্যাচ নম্বর ও মেয়াদ শেষের তারিখ দিতে হবে।'
+                              : 'Enter a batch number and expiry date when adding medicine stock.',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
 
               // Submit button
@@ -351,4 +430,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         if (number == null || number < 0) return 'সঠিক $label লিখুন';
         return null;
       };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('isEditing', isEditing));
+  }
 }

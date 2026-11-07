@@ -10,11 +10,17 @@ import 'fefo_screen.dart';
 import 'stock_history_screen.dart';
 
 class BatchListScreen extends ConsumerStatefulWidget {
+  const BatchListScreen({required this.product, super.key});
   final ProductModel product;
-  const BatchListScreen({super.key, required this.product});
 
   @override
   ConsumerState<BatchListScreen> createState() => _BatchListScreenState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<ProductModel>('product', product));
+  }
 }
 
 class _BatchListScreenState extends ConsumerState<BatchListScreen> {
@@ -31,8 +37,8 @@ class _BatchListScreenState extends ConsumerState<BatchListScreen> {
         productName: widget.product.name,
         unit: widget.product.unit,
       ),
-    ));
-    if (saved == true && mounted) {
+    ),);
+    if ((saved ?? false) && mounted) {
       await ref.read(batchProvider(widget.product.id).notifier).load();
     }
   }
@@ -52,14 +58,14 @@ class _BatchListScreenState extends ConsumerState<BatchListScreen> {
             icon: const Icon(Icons.history),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => StockHistoryScreen(productId: widget.product.id, productName: widget.product.name),
-            )),
+            ),),
           ),
           IconButton(
             tooltip: 'FEFO পরামর্শ',
             icon: const Icon(Icons.sort),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => FefoScreen(productId: widget.product.id, productName: widget.product.name),
-            )),
+            ),),
           ),
         ],
       ),
@@ -104,10 +110,10 @@ class _BatchListScreenState extends ConsumerState<BatchListScreen> {
                         onTap: () async {
                           final changed = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
                             builder: (_) => BatchDetailScreen(product: widget.product, batch: batch),
-                          ));
-                          if (changed == true && mounted) await notifier.load();
+                          ),);
+                          if ((changed ?? false) && mounted) await notifier.load();
                         },
-                      )),
+                      ),),
                 ],
               ),
       ),
@@ -119,10 +125,10 @@ class _BatchListScreenState extends ConsumerState<BatchListScreen> {
 }
 
 class _BatchCard extends StatelessWidget {
+  const _BatchCard({required this.batch, required this.unit, required this.onTap});
   final BatchModel batch;
   final String unit;
   final VoidCallback onTap;
-  const _BatchCard({required this.batch, required this.unit, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -138,20 +144,20 @@ class _BatchCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 10),
       child: ListTile(
         onTap: onTap,
-        title: Text(batch.batchNumber?.isNotEmpty == true ? batch.batchNumber! : 'ব্যাচ #${batch.id}'),
+        title: Text(batch.batchNumber?.isNotEmpty ?? false ? batch.batchNumber! : 'ব্যাচ #${batch.id}'),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('পরিমাণ: ${batch.quantity} $unit  •  ক্রয়: ৳${batch.purchasePrice.toStringAsFixed(2)}'),
             const SizedBox(height: 5),
             Text(batch.expiryStatusText),
-          ]),
+          ],),
         ),
         trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.circle, color: color, size: 13),
           const SizedBox(height: 4),
           Text(_statusLabel(status), style: TextStyle(color: color, fontSize: 11)),
-        ]),
+        ],),
       ),
     );
   }
@@ -163,4 +169,12 @@ class _BatchCard extends StatelessWidget {
         'DEPLETED' => 'শেষ',
         _ => 'সক্রিয়',
       };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<BatchModel>('batch', batch));
+    properties.add(StringProperty('unit', unit));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
+  }
 }

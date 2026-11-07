@@ -1,14 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/network/api_exception.dart';
 import '../models/category_model.dart';
 import '../services/category_service.dart';
-import '../core/network/api_exception.dart';
 
 /// Category state
 class CategoryState {
-  final List<CategoryModel> categories;
-  final bool isLoading;
-  final bool isRefreshing;
-  final String? error;
 
   CategoryState({
     this.categories = const [],
@@ -16,46 +13,44 @@ class CategoryState {
     this.isRefreshing = false,
     this.error,
   });
+  final List<CategoryModel> categories;
+  final bool isLoading;
+  final bool isRefreshing;
+  final String? error;
 
   CategoryState copyWith({
     List<CategoryModel>? categories,
     bool? isLoading,
     bool? isRefreshing,
     String? error,
-  }) {
-    return CategoryState(
+  }) => CategoryState(
       categories: categories ?? this.categories,
       isLoading: isLoading ?? this.isLoading,
       isRefreshing: isRefreshing ?? this.isRefreshing,
       error: error,
     );
-  }
 
-  CategoryState clearError() {
-    return CategoryState(
+  CategoryState clearError() => CategoryState(
       categories: categories,
       isLoading: isLoading,
       isRefreshing: isRefreshing,
-      error: null,
     );
-  }
 }
 
 /// Category state notifier
 class CategoryNotifier extends StateNotifier<CategoryState> {
-  final CategoryService _categoryService;
 
   CategoryNotifier(this._categoryService) : super(CategoryState());
+  final CategoryService _categoryService;
 
   /// Load categories
   Future<void> loadCategories() async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
 
     try {
       final categories = await _categoryService.getCategories();
       state = CategoryState(
         categories: categories,
-        isLoading: false,
       );
     } catch (e) {
       state = state.copyWith(
@@ -67,13 +62,12 @@ class CategoryNotifier extends StateNotifier<CategoryState> {
 
   /// Refresh categories
   Future<void> refreshCategories() async {
-    state = state.copyWith(isRefreshing: true, error: null);
+    state = state.copyWith(isRefreshing: true);
 
     try {
       final categories = await _categoryService.getCategories();
       state = CategoryState(
         categories: categories,
-        isRefreshing: false,
       );
     } catch (e) {
       state = state.copyWith(
@@ -167,9 +161,7 @@ class CategoryNotifier extends StateNotifier<CategoryState> {
 }
 
 /// Category service provider
-final categoryServiceProvider = Provider<CategoryService>((ref) {
-  return CategoryService();
-});
+final categoryServiceProvider = Provider<CategoryService>((ref) => CategoryService());
 
 /// Category state provider
 final categoryProvider =

@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/product_provider.dart';
-import '../../../models/product_model.dart';
+
 import '../../../core/theme/app_colors.dart';
+import '../../../models/product_model.dart';
+import '../../../providers/product_provider.dart';
 import '../../stock/screens/batch_list_screen.dart';
 import 'product_form_screen.dart';
 
 /// Product detail screen
 class ProductDetailScreen extends ConsumerWidget {
-  final ProductModel product;
 
-  const ProductDetailScreen({super.key, required this.product});
+  const ProductDetailScreen({required this.product, super.key});
+  final ProductModel product;
 
   String _getUnitLabel(String unit) {
     const unitMap = {
@@ -44,7 +45,7 @@ class ProductDetailScreen extends ConsumerWidget {
       ),
     );
 
-    if (confirmed == true && context.mounted) {
+    if ((confirmed ?? false) && context.mounted) {
       final success =
           await ref.read(productProvider.notifier).deleteProduct(product.id);
 
@@ -77,7 +78,7 @@ class ProductDetailScreen extends ConsumerWidget {
         if (item.id == product.id) return item;
       }
       return product;
-    }));
+    }),);
     return Scaffold(
       appBar: AppBar(
         title: const Text('পণ্যের বিবরণ'),
@@ -93,7 +94,7 @@ class ProductDetailScreen extends ConsumerWidget {
                 ),
               );
 
-              if (result == true && context.mounted) {
+              if ((result ?? false) && context.mounted) {
                 Navigator.of(context).pop(true);
               }
             },
@@ -105,7 +106,7 @@ class ProductDetailScreen extends ConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -144,10 +145,10 @@ class ProductDetailScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: displayedProduct.isOutOfStock
-                    ? AppColors.error.withOpacity(0.1)
+                    ? AppColors.error.withValues(alpha: 0.1)
                     : displayedProduct.isLowStock
-                        ? Colors.orange.withOpacity(0.1)
-                        : Colors.green.withOpacity(0.1),
+                        ? Colors.orange.withValues(alpha: 0.1)
+                        : Colors.green.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: displayedProduct.isOutOfStock
@@ -237,7 +238,7 @@ class ProductDetailScreen extends ConsumerWidget {
             _buildDetailRow('বারকোড', displayedProduct.barcode ?? 'নেই'),
             _buildDetailRow('একক', _getUnitLabel(displayedProduct.unit)),
             _buildDetailRow(
-                'সর্বনিম্ন স্টক', '${displayedProduct.formattedMinimumStock} ${_getUnitLabel(displayedProduct.unit)}'),
+                'সর্বনিম্ন স্টক', '${displayedProduct.formattedMinimumStock} ${_getUnitLabel(displayedProduct.unit)}',),
             _buildDetailRow('বিক্রয় মূল্য', '৳${displayedProduct.sellingPrice.toStringAsFixed(2)}'),
             _buildDetailRow('ক্রয় মূল্য', '৳${displayedProduct.defaultPurchasePrice.toStringAsFixed(2)}'),
             _buildDetailRow('লক্ষ্য স্টক দিন', '${displayedProduct.targetStockDays}'),
@@ -249,8 +250,7 @@ class ProductDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
+  Widget _buildDetailRow(String label, String value) => Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,5 +277,10 @@ class ProductDetailScreen extends ConsumerWidget {
         ],
       ),
     );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<ProductModel>('product', product));
   }
 }

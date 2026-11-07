@@ -1,15 +1,14 @@
 import 'package:dio/dio.dart';
+
 import '../core/constants/api_constants.dart';
 import '../core/network/api_exception.dart';
 import '../core/storage/secure_storage.dart';
+import '../models/api_response_model.dart';
 import '../models/auth_response_model.dart';
 import '../models/user_model.dart';
-import '../models/api_response_model.dart';
 
 /// Authentication service
 class AuthService {
-  final Dio _dio;
-  final SecureStorage _secureStorage;
 
   AuthService({
     Dio? dio,
@@ -21,6 +20,8 @@ class AuthService {
     _dio.options.receiveTimeout = const Duration(seconds: 30);
     _dio.options.headers['Content-Type'] = 'application/json';
   }
+  final Dio _dio;
+  final SecureStorage _secureStorage;
 
   /// Register new user
   Future<AuthResponseModel> register({
@@ -49,7 +50,7 @@ class AuthService {
         );
 
         final authResponse = AuthResponseModel.fromJson(
-          apiResponse.data as Map<String, dynamic>,
+          apiResponse.data!,
         );
 
         // Save token
@@ -69,7 +70,7 @@ class AuthService {
           final message = data['message'] as String? ?? 'Registration failed';
           final errors = data['errors'] as List?;
           
-          String errorMessage = message;
+          var errorMessage = message;
           if (errors != null && errors.isNotEmpty) {
             final firstError = errors[0] as Map<String, dynamic>;
             errorMessage = firstError['message'] as String? ?? message;
@@ -87,7 +88,7 @@ class AuthService {
       );
     } catch (e) {
       throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
+        message: 'Unexpected error: $e',
       );
     }
   }
@@ -113,7 +114,7 @@ class AuthService {
         );
 
         final authResponse = AuthResponseModel.fromJson(
-          apiResponse.data as Map<String, dynamic>,
+          apiResponse.data!,
         );
 
         // Save token
@@ -143,7 +144,7 @@ class AuthService {
       );
     } catch (e) {
       throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
+        message: 'Unexpected error: $e',
       );
     }
   }
@@ -172,7 +173,7 @@ class AuthService {
           (json) => json,
         );
 
-        final userData = apiResponse.data as Map<String, dynamic>;
+        final userData = apiResponse.data!;
         return UserModel.fromJson(userData['user'] as Map<String, dynamic>);
       }
 
@@ -197,7 +198,7 @@ class AuthService {
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException(
-        message: 'Unexpected error: ${e.toString()}',
+        message: 'Unexpected error: $e',
       );
     }
   }
@@ -237,7 +238,5 @@ class AuthService {
   }
 
   /// Get stored token
-  Future<String?> getToken() async {
-    return await _secureStorage.getToken();
-  }
+  Future<String?> getToken() async => _secureStorage.getToken();
 }

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shopwise_app/main.dart';
 import 'package:shopwise_app/models/user_model.dart';
 import 'package:shopwise_app/providers/auth_provider.dart';
-import 'package:shopwise_app/providers/shop_provider.dart';
 import 'package:shopwise_app/providers/reports_provider.dart';
+import 'package:shopwise_app/providers/shop_provider.dart';
 import 'package:shopwise_app/repositories/reports_repository.dart';
 import 'package:shopwise_app/services/auth_service.dart';
 import 'package:shopwise_app/services/shop_service.dart';
@@ -50,8 +50,7 @@ UserModel _testUser({required bool hasShop}) {
   );
 }
 
-Widget _appWithAuthState(AuthState authState) {
-  return ProviderScope(
+Widget _appWithAuthState(AuthState authState) => ProviderScope(
     overrides: [
       authProvider.overrideWith((ref) => _TestAuthNotifier(authState)),
       shopProvider.overrideWith((ref) => _TestShopNotifier()),
@@ -59,7 +58,6 @@ Widget _appWithAuthState(AuthState authState) {
     ],
     child: const ShopWiseApp(),
   );
-}
 
 void main() {
   testWidgets('unauthenticated startup reaches the welcome screen', (

@@ -6,10 +6,6 @@ import '../models/sale_request.dart';
 import '../repositories/sales_repository.dart';
 
 class SalesState {
-  final bool isLoading;
-  final SaleModel? sale;
-  final String? error;
-  final String? successMessage;
 
   const SalesState({
     this.isLoading = false,
@@ -17,12 +13,16 @@ class SalesState {
     this.error,
     this.successMessage,
   });
+  final bool isLoading;
+  final SaleModel? sale;
+  final String? error;
+  final String? successMessage;
 }
 
 class SalesController extends StateNotifier<SalesState> {
-  final SalesRepository _repository;
 
   SalesController(this._repository) : super(const SalesState());
+  final SalesRepository _repository;
 
   Future<bool> processSale(SaleRequest request) async {
     state = const SalesState(isLoading: true);

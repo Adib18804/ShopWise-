@@ -119,7 +119,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
                   groupValue: currentCategoryId,
                   onChanged: (value) => Navigator.of(context).pop(value),
                 ),
-                onTap: () => Navigator.of(context).pop(null),
+                onTap: () => Navigator.of(context).pop(),
               ),
               ...categories.map((cat) => ListTile(
                     title: Text(cat.name),
@@ -129,7 +129,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
                       onChanged: (v) => Navigator.of(context).pop(v),
                     ),
                     onTap: () => Navigator.of(context).pop(cat.id),
-                  )),
+                  ),),
             ],
           ),
         ),
@@ -178,7 +178,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
                   hintStyle: TextStyle(color: AppColors.textSecondary),
                 ),
                 style: const TextStyle(
-                    color: AppColors.textPrimary, fontSize: 16),
+                    color: AppColors.textPrimary, fontSize: 16,),
                 onChanged: _handleSearch,
               )
             : const Text('আমার স্টক'),
@@ -223,12 +223,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
               color: AppColors.surfaceVariant,
               child: Row(
                 children: [
-                  Text(
+                  const Text(
                     'ক্যাটাগরি: ',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary),
+                        color: AppColors.textSecondary,),
                   ),
                   InputChip(
                     label: Text(
@@ -239,7 +239,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
                           )
                           .name,
                       style: const TextStyle(
-                          fontSize: 12, color: AppColors.primary),
+                          fontSize: 12, color: AppColors.primary,),
                     ),
                     onPressed: () =>
                         ref.read(productProvider.notifier).clearFilters(),
@@ -247,9 +247,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
                     onDeleted: () =>
                         ref.read(productProvider.notifier).clearFilters(),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    backgroundColor: AppColors.primary.withOpacity(0.08),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.08),
                     side: BorderSide(
-                        color: AppColors.primary.withOpacity(0.3)),
+                        color: AppColors.primary.withValues(alpha: 0.3),),
                   ),
                 ],
               ),
@@ -291,9 +291,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
         onPressed: () async {
           final result = await Navigator.of(context).push<bool>(
             MaterialPageRoute<bool>(
-                builder: (_) => const ProductFormScreen()),
+                builder: (_) => const ProductFormScreen(),),
           );
-          if (result == true) _handleRefresh();
+          if (result ?? false) _handleRefresh();
         },
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.add_rounded, color: Colors.white),
@@ -307,10 +307,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen>
 // =============================================================================
 
 class _FilterChipsBar extends StatelessWidget {
-  final _StockFilter active;
-  final ValueChanged<_StockFilter> onSelected;
 
   const _FilterChipsBar({required this.active, required this.onSelected});
+  final _StockFilter active;
+  final ValueChanged<_StockFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -329,7 +329,7 @@ class _FilterChipsBar extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 7),
+                    horizontal: 14, vertical: 7,),
                 decoration: BoxDecoration(
                   color: isActive
                       ? AppColors.primary
@@ -358,6 +358,13 @@ class _FilterChipsBar extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<_StockFilter>('active', active));
+    properties.add(ObjectFlagProperty<ValueChanged<_StockFilter>>.has('onSelected', onSelected));
+  }
 }
 
 // =============================================================================
@@ -365,15 +372,15 @@ class _FilterChipsBar extends StatelessWidget {
 // =============================================================================
 
 class _ProductCard extends StatelessWidget {
-  final ProductModel product;
-  final String unitLabel;
-  final VoidCallback onTap;
 
   const _ProductCard({
     required this.product,
     required this.unitLabel,
     required this.onTap,
   });
+  final ProductModel product;
+  final String unitLabel;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -408,11 +415,11 @@ class _ProductCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.inventory_2_rounded,
-                    color: statusColor, size: 22),
+                    color: statusColor, size: 22,),
               ),
               const SizedBox(width: 12),
               // Name + category
@@ -425,37 +432,37 @@ class _ProductCard extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary),
+                          color: AppColors.textPrimary,),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       product.category?.name ?? 'অজানা',
                       style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
+                          fontSize: 12, color: AppColors.textSecondary,),
                     ),
                     // Restock badge (low stock)
                     if (product.isLowStock) ...[
                       const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
+                            horizontal: 7, vertical: 2,),
                         decoration: BoxDecoration(
-                          color: AppColors.warning.withOpacity(0.1),
+                          color: AppColors.warning.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                              color: AppColors.warning.withOpacity(0.4)),
+                              color: AppColors.warning.withValues(alpha: 0.4),),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
+                          children: [
                             Icon(Icons.refresh_rounded,
-                                size: 11, color: AppColors.warning),
+                                size: 11, color: AppColors.warning,),
                             SizedBox(width: 3),
                             Text('রিস্টক করুন',
                                 style: TextStyle(
                                     fontSize: 10,
                                     color: AppColors.warning,
-                                    fontWeight: FontWeight.w700)),
+                                    fontWeight: FontWeight.w700,),),
                           ],
                         ),
                       ),
@@ -473,14 +480,14 @@ class _ProductCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: statusColor),
+                        color: statusColor,),
                   ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                        horizontal: 8, vertical: 3,),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
+                      color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
@@ -488,19 +495,27 @@ class _ProductCard extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: statusColor),
+                          color: statusColor,),
                     ),
                   ),
                 ],
               ),
               const SizedBox(width: 4),
               const Icon(Icons.chevron_right,
-                  size: 18, color: AppColors.textDisabled),
+                  size: 18, color: AppColors.textDisabled,),
             ],
           ),
         ),
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<ProductModel>('product', product));
+    properties.add(StringProperty('unitLabel', unitLabel));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
   }
 }
 
@@ -509,8 +524,8 @@ class _ProductCard extends StatelessWidget {
 // =============================================================================
 
 class _EmptyState extends StatelessWidget {
-  final _StockFilter filter;
   const _EmptyState({required this.filter});
+  final _StockFilter filter;
 
   @override
   Widget build(BuildContext context) {
@@ -549,15 +564,21 @@ class _EmptyState extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary)),
+                    color: AppColors.textSecondary,),),
             const SizedBox(height: 6),
             Text(sub,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    fontSize: 13, color: AppColors.textDisabled)),
+                    fontSize: 13, color: AppColors.textDisabled,),),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<_StockFilter>('filter', filter));
   }
 }

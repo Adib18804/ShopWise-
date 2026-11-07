@@ -2,29 +2,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Category model
 class CategoryModel {
-  final int id;
-  /// Firestore document id; `null` for legacy API-parsed categories.
-  final String? docId;
-  final int shopId;
-  final String name;
-  final String? description;
-  final int? productCount;
-  final DateTime createdAt;
-  final DateTime updatedAt;
 
   CategoryModel({
     required this.id,
-    this.docId,
-    required this.shopId,
-    required this.name,
+    required this.shopId, required this.name, required this.createdAt, required this.updatedAt, this.docId,
     this.description,
     this.productCount,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
-  factory CategoryModel.fromJson(Map<String, dynamic> json) {
-    return CategoryModel(
+  factory CategoryModel.fromJson(Map<String, dynamic> json) => CategoryModel(
       id: json['id'] as int,
       shopId: json['shop_id'] as int,
       name: json['name'] as String,
@@ -33,7 +19,6 @@ class CategoryModel {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
-  }
 
   /// Builds a [CategoryModel] from a Firestore document. The legacy `int` id is
   /// a stable hash of the document id so existing int-based UI (dropdowns,
@@ -54,9 +39,17 @@ class CategoryModel {
       updatedAt: _toDateTime(data['updated_at']),
     );
   }
+  final int id;
+  /// Firestore document id; `null` for legacy API-parsed categories.
+  final String? docId;
+  final int shopId;
+  final String name;
+  final String? description;
+  final int? productCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
-  Map<String, dynamic> toJson() {
-    return {
+  Map<String, dynamic> toJson() => {
       'id': id,
       'shop_id': shopId,
       'name': name,
@@ -65,7 +58,6 @@ class CategoryModel {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
-  }
 
   CategoryModel copyWith({
     int? id,
@@ -76,8 +68,7 @@ class CategoryModel {
     int? productCount,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) {
-    return CategoryModel(
+  }) => CategoryModel(
       id: id ?? this.id,
       docId: docId ?? this.docId,
       shopId: shopId ?? this.shopId,
@@ -87,7 +78,6 @@ class CategoryModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
-  }
 
   static DateTime _toDateTime(dynamic value) {
     if (value is Timestamp) return value.toDate();

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/category_provider.dart';
+
 import '../../../core/theme/app_colors.dart';
+import '../../../providers/category_provider.dart';
 import 'category_form_screen.dart';
 
 /// Categories list screen
@@ -44,7 +45,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
       ),
     );
 
-    if (confirmed == true && mounted) {
+    if ((confirmed ?? false) && mounted) {
       final success = await ref.read(categoryProvider.notifier).deleteCategory(id);
 
       if (!mounted) return;
@@ -120,7 +121,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: AppColors.primary.withOpacity(0.1),
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                             child: const Icon(
                               Icons.category,
                               color: AppColors.primary,
@@ -169,7 +170,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
                                     ),
                                   );
 
-                                  if (result == true) {
+                                  if (result ?? false) {
                                     _handleRefresh();
                                   }
                                 },
@@ -195,7 +196,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
             ),
           );
 
-          if (result == true) {
+          if (result ?? false) {
             _handleRefresh();
           }
         },

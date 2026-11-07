@@ -5,45 +5,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// parsing goes through the safe [_toDouble] helper so that `num`, `String`,
 /// `int` and `null` values never throw.
 class ProductModel {
-  final int id;
-  /// The Firestore document id of this product. Populated by
-  /// [ProductModel.fromFirestore]; `null` for legacy API-parsed products.
-  final String? docId;
-  final int shopId;
-  final int? categoryId;
-  final String name;
-  final String? sku;
-  final String? barcode;
-  final String unit;
-  final double sellingPrice;
-  final double defaultPurchasePrice;
-  final double minimumStock;
-  final int targetStockDays;
-  final bool isActive;
-  final double totalStock;
-  final int? batchCount;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final CategoryInfo? category;
 
   const ProductModel({
     required this.id,
-    this.docId,
-    required this.shopId,
+    required this.shopId, required this.name, required this.unit, required this.sellingPrice, required this.defaultPurchasePrice, required this.minimumStock, required this.createdAt, required this.updatedAt, this.docId,
     this.categoryId,
-    required this.name,
     this.sku,
     this.barcode,
-    required this.unit,
-    required this.sellingPrice,
-    required this.defaultPurchasePrice,
-    required this.minimumStock,
+    this.author,
+    this.isbn,
     this.targetStockDays = 7,
     this.isActive = true,
     this.totalStock = 0,
     this.batchCount,
-    required this.createdAt,
-    required this.updatedAt,
     this.category,
   });
 
@@ -58,6 +32,8 @@ class ProductModel {
       name: json['name'] as String,
       sku: json['sku'] as String?,
       barcode: json['barcode'] as String?,
+      author: json['author'] as String?,
+      isbn: json['isbn'] as String?,
       unit: json['unit'] as String,
       sellingPrice: _toDouble(json['selling_price']),
       defaultPurchasePrice: _toDouble(json['default_purchase_price']),
@@ -100,6 +76,8 @@ class ProductModel {
       name: (data['name'] as String?) ?? '',
       sku: data['sku'] as String?,
       barcode: data['barcode'] as String?,
+      author: data['author'] as String?,
+      isbn: data['isbn'] as String?,
       unit: (data['unit'] as String?) ?? 'piece',
       sellingPrice: _toDouble(data['selling_price']),
       defaultPurchasePrice: _toDouble(data['default_purchase_price']),
@@ -115,12 +93,34 @@ class ProductModel {
           : CategoryInfo(id: 0, name: data['category_name'] as String),
     );
   }
+  final int id;
+  /// The Firestore document id of this product. Populated by
+  /// [ProductModel.fromFirestore]; `null` for legacy API-parsed products.
+  final String? docId;
+  final int shopId;
+  final int? categoryId;
+  final String name;
+  final String? sku;
+  final String? barcode;
+  final String? author;
+  final String? isbn;
+  final String unit;
+  final double sellingPrice;
+  final double defaultPurchasePrice;
+  final double minimumStock;
+  final int targetStockDays;
+  final bool isActive;
+  final double totalStock;
+  final int? batchCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final CategoryInfo? category;
 
   static double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) return 0;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    return 0;
   }
 
   static DateTime _toDateTime(dynamic value) {
@@ -146,6 +146,8 @@ class ProductModel {
         'name': name,
         'sku': sku,
         'barcode': barcode,
+        'author': author,
+        'isbn': isbn,
         'unit': unit,
         'selling_price': sellingPrice,
         'default_purchase_price': defaultPurchasePrice,
@@ -167,6 +169,8 @@ class ProductModel {
     String? name,
     String? sku,
     String? barcode,
+    String? author,
+    String? isbn,
     String? unit,
     double? sellingPrice,
     double? defaultPurchasePrice,
@@ -187,6 +191,8 @@ class ProductModel {
         name: name ?? this.name,
         sku: sku ?? this.sku,
         barcode: barcode ?? this.barcode,
+        author: author ?? this.author,
+        isbn: isbn ?? this.isbn,
         unit: unit ?? this.unit,
         sellingPrice: sellingPrice ?? this.sellingPrice,
         defaultPurchasePrice: defaultPurchasePrice ?? this.defaultPurchasePrice,
@@ -210,8 +216,6 @@ class ProductModel {
 }
 
 class CategoryInfo {
-  final int id;
-  final String name;
 
   const CategoryInfo({required this.id, required this.name});
 
@@ -219,6 +223,8 @@ class CategoryInfo {
         id: (json['id'] as num).toInt(),
         name: json['name'] as String,
       );
+  final int id;
+  final String name;
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name};
 }

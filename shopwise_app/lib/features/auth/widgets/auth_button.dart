@@ -3,18 +3,16 @@ import '../../../core/theme/app_colors.dart';
 
 /// Custom button for authentication screens
 class AuthButton extends StatelessWidget {
+
+  const AuthButton({
+    required this.text, required this.onPressed, super.key,
+    this.isLoading = false,
+    this.isOutlined = false,
+  });
   final String text;
   final VoidCallback? onPressed;
   final bool isLoading;
   final bool isOutlined;
-
-  const AuthButton({
-    super.key,
-    required this.text,
-    required this.onPressed,
-    this.isLoading = false,
-    this.isOutlined = false,
-  });
 
   @override
   Widget build(BuildContext context) {
@@ -84,5 +82,14 @@ class AuthButton extends StatelessWidget {
               ),
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('text', text));
+    properties.add(ObjectFlagProperty<VoidCallback?>.has('onPressed', onPressed));
+    properties.add(DiagnosticsProperty<bool>('isLoading', isLoading));
+    properties.add(DiagnosticsProperty<bool>('isOutlined', isOutlined));
   }
 }

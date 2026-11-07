@@ -1,9 +1,4 @@
 class DailyReportModel {
-  final String date;
-  final double totalSalesAmount;
-  final double totalItemsSold;
-  final double totalDueAmount;
-  final List<SalesTrendPoint> salesTrend;
 
   const DailyReportModel({
     required this.date,
@@ -24,6 +19,11 @@ class DailyReportModel {
             .map(SalesTrendPoint.fromJson)
             .toList(growable: false),
       );
+  final String date;
+  final double totalSalesAmount;
+  final double totalItemsSold;
+  final double totalDueAmount;
+  final List<SalesTrendPoint> salesTrend;
 
   static double _number(dynamic value) {
     if (value is num) return value.toDouble();
@@ -33,8 +33,6 @@ class DailyReportModel {
 }
 
 class SalesTrendPoint {
-  final String date;
-  final double salesAmount;
 
   const SalesTrendPoint({required this.date, required this.salesAmount});
 
@@ -43,4 +41,6 @@ class SalesTrendPoint {
         date: json['date']?.toString() ?? '',
         salesAmount: DailyReportModel._number(json['sales_amount']),
       );
+  final String date;
+  final double salesAmount;
 }

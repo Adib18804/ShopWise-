@@ -15,11 +15,6 @@ import '../models/user_model.dart';
 /// authenticated. Downstream providers (products, sales, reports) read it to
 /// scope every Firestore query to the user's own shop.
 class AuthState {
-  final UserModel? user;
-  final bool isLoading;
-  final bool isAuthenticated;
-  final String? error;
-  final String? shopId;
 
   AuthState({
     this.user,
@@ -28,6 +23,11 @@ class AuthState {
     this.error,
     this.shopId,
   });
+  final UserModel? user;
+  final bool isLoading;
+  final bool isAuthenticated;
+  final String? error;
+  final String? shopId;
 
   AuthState copyWith({
     UserModel? user,
@@ -36,8 +36,7 @@ class AuthState {
     String? error,
     String? shopId,
     bool clearShopId = false,
-  }) {
-    return AuthState(
+  }) => AuthState(
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -46,7 +45,6 @@ class AuthState {
       error: error,
       shopId: clearShopId ? null : (shopId ?? this.shopId),
     );
-  }
 
   AuthState clearError() => AuthState(
         user: user,
@@ -64,11 +62,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Restores the session on app start (called by the splash screen).
   Future<void> initialize() async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     try {
       final firebaseUser = _auth.currentUser;
       if (firebaseUser == null) {
-        state = AuthState(isAuthenticated: false);
+        state = AuthState();
         return;
       }
       final user = await _loadUser(firebaseUser);
@@ -79,20 +77,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
     } catch (error) {
       state = AuthState(
-        isAuthenticated: false,
         error: _errorMessage(error),
       );
     }
   }
 
-  /// Creates a new auth account and provisions the matching `users` and
-  /// `shops` Firestore documents.
+  /// Creates a new auth account and provisions the `users` Firestore document.
   ///
-  /// The registration form only collects owner details (name, phone, email),
-  /// so the `shops` document is seeded here as *incomplete* (`setup_complete:
-  /// false`). The actual shop name/address/currency are filled in afterwards
-  /// by the [ShopSetupScreen] (see `shop_provider.dart`), which flips
-  /// `setup_complete` to `true`. The shop document id is the owner's UID.
+  /// The shop document is created only after the owner completes Shop Setup.
   Future<bool> register({
     required String name,
     required String phone,
@@ -100,7 +92,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String password,
     String preferredLanguage = 'bn',
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     User? createdUser;
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -110,7 +102,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final firebaseUser = credential.user;
       if (firebaseUser == null) {
         throw ApiException(
-            message: 'অ্যাকাউন্ট তৈরি করা যায়নি। আবার চেষ্টা করুন।');
+            message: 'অ্যাকাউন্ট তৈরি করা যায়নি। আবার চেষ্টা করুন।',);
       }
       createdUser = firebaseUser;
       await firebaseUser.updateDisplayName(name.trim());
@@ -126,23 +118,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'created_at': Timestamp.fromDate(now),
         'updated_at': Timestamp.fromDate(now),
       };
-      // Seed the shop record. Shop name/address are added during shop setup.
-      final shop = <String, dynamic>{
-        'owner_id': firebaseUser.uid,
-        'owner_name': name.trim(),
-        'phone': phone.trim(),
-        'email': email.trim(),
-        'shop_name': '',
-        'address': '',
-        'currency': 'BDT',
-        'setup_complete': false,
-        'created_at': Timestamp.fromDate(now),
-        'updated_at': Timestamp.fromDate(now),
-      };
-      final batch = _firestore.batch();
-      batch.set(_firestore.collection('users').doc(firebaseUser.uid), profile);
-      batch.set(_firestore.collection('shops').doc(firebaseUser.uid), shop);
-      await batch.commit();
+      await _firestore
+          .collection('users')
+          .doc(firebaseUser.uid)
+          .set(profile);
 
       state = AuthState(
         user: _toUserModel(firebaseUser, profile, hasShop: false),
@@ -160,7 +139,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
         }
       }
       state = AuthState(
-        isLoading: false,
         error: _errorMessage(error),
       );
       return false;
@@ -172,7 +150,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String identifier,
     required String password,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     try {
       final email = identifier.trim();
       if (!email.contains('@')) {
@@ -194,17 +172,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return true;
     } catch (error) {
-      state = AuthState(isLoading: false, error: _errorMessage(error));
+      state = AuthState(error: _errorMessage(error));
       return false;
     }
   }
 
   Future<void> logout() async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     try {
       await _auth.signOut();
     } finally {
-      state = AuthState(isAuthenticated: false);
+      state = AuthState();
     }
   }
 
@@ -213,7 +191,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> refreshUser() async {
     final firebaseUser = _auth.currentUser;
     if (firebaseUser == null) {
-      state = AuthState(isAuthenticated: false);
+      state = AuthState();
       return;
     }
     try {
@@ -221,7 +199,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(
         user: user,
         isAuthenticated: true,
-        error: null,
         shopId: firebaseUser.uid,
       );
     } catch (error) {
@@ -235,9 +212,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   /// Loads the user profile + shop status from Firestore.
   ///
-  /// `hasShop` is derived from the `shops/{uid}` document's `setup_complete`
-  /// flag rather than the `users.has_shop` denormalised field, so the source
-  /// of truth stays on the shop record itself.
+  /// `hasShop` is true only when setup is complete and `shop_type` is valid.
+  /// Incomplete records and legacy shops without a type return to setup.
   Future<UserModel> _loadUser(User firebaseUser) async {
     final profileSnapshot =
         await _firestore.collection('users').doc(firebaseUser.uid).get();
@@ -245,16 +221,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     final shopSnapshot =
         await _firestore.collection('shops').doc(firebaseUser.uid).get();
-    final hasShop =
-        shopSnapshot.exists && shopSnapshot.data()?['setup_complete'] == true;
+    final shopData = shopSnapshot.data();
+    const supportedShopTypes = {
+      'general',
+      'pharmacy',
+      'stationery',
+      'library',
+    };
+    final shopType = shopData?['shop_type'];
+    final hasShop = shopSnapshot.exists &&
+        shopData?['setup_complete'] == true &&
+        shopType is String &&
+        supportedShopTypes.contains(shopType);
 
-    return _toUserModel(firebaseUser, profile, hasShop: hasShop);
+    return _toUserModel(
+      firebaseUser,
+      profile,
+      hasShop: hasShop,
+      shopType: shopType is String ? shopType : null,
+    );
   }
 
   UserModel _toUserModel(
     User firebaseUser,
     Map<String, dynamic> profile, {
     required bool hasShop,
+    String? shopType,
   }) {
     final createdAt = profile['created_at'];
     final updatedAt = profile['updated_at'];
@@ -276,6 +268,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       preferredLanguage: (profile['preferred_language'] as String?) ?? 'bn',
       hasShop: hasShop,
       shopId: hasShop ? _stableNumericId(firebaseUser.uid) : null,
+      shopType: shopType,
       createdAt: createdDate,
       updatedAt: updatedDate,
     );
@@ -319,6 +312,4 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier();
-});
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) => AuthNotifier());

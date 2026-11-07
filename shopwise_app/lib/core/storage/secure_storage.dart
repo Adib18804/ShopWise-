@@ -21,9 +21,7 @@ class SecureStorage {
   }
 
   /// Read a value securely
-  Future<String?> read(String key) async {
-    return await _storage.read(key: key);
-  }
+  Future<String?> read(String key) async => _storage.read(key: key);
 
   /// Delete a value
   Future<void> delete(String key) async {
@@ -36,14 +34,10 @@ class SecureStorage {
   }
 
   /// Check if a key exists
-  Future<bool> containsKey(String key) async {
-    return await _storage.containsKey(key: key);
-  }
+  Future<bool> containsKey(String key) async => _storage.containsKey(key: key);
 
   /// Get all keys
-  Future<Map<String, String>> readAll() async {
-    return await _storage.readAll();
-  }
+  Future<Map<String, String>> readAll() async => _storage.readAll();
 
   // ============ TOKEN METHODS ============
 
@@ -55,9 +49,7 @@ class SecureStorage {
   }
 
   /// Get auth token
-  Future<String?> getToken() async {
-    return await _storage.read(key: _tokenKey);
-  }
+  Future<String?> getToken() async => _storage.read(key: _tokenKey);
 
   /// Delete auth token
   Future<void> deleteToken() async {

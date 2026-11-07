@@ -2,40 +2,186 @@ rules_version = '2';
 
 // ShopWise Firestore Security Rules
 //
-// Data model:
-//   users/{uid}                   – user profile
-//   shops/{uid}                   – shop, keyed by owner Firebase UID
-//   shops/{uid}/products/{id}     – products
-//   shops/{uid}/batches/{id}      – stock batches
-//   shops/{uid}/invoices/{id}     – sales invoices
-//   shops/{uid}/customers/{id}    – customers / baki khata
-//   shops/{uid}/categories/{id}   – product categories
-//
-// Because the shop document id equals the owner's UID, a single
-// `request.auth.uid == shopId` check in the recursive wildcard rule keeps
-// every shop's data fully isolated — no user can read or write another
-// shop's subcollections.
+// Shop documents are keyed by their owner's Firebase UID. The collection
+// rules preserve that tenant boundary and validate critical numeric fields.
+// Keep the recursive fallback read-only: Firestore combines matching allows
+// with OR, so a broad recursive write grant would bypass validations below.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // A user can only access their own profile document.
-    match /users/{userId} {
-      allow read, write: if request.auth != null
-                          && request.auth.uid == userId;
+    function isShopOwner(shopId) {
+      return request.auth != null && request.auth.uid == shopId;
     }
 
-    // Shops are keyed by the owner's UID. Only the owner can access their shop.
-    match /shops/{shopId} {
-      allow read, write: if request.auth != null
-                          && request.auth.uid == shopId;
+    function isAdmin() {
+      return request.auth != null &&
+        ('admin' in request.auth.token) &&
+        request.auth.token.admin == true;
+    }
 
-      // Every nested document (products, batches, invoices, ...) belongs to the
-      // shop owner. The recursive wildcard + the uid == shopId check keeps each
-      // shop's data fully isolated from every other shop.
+    function validFeedbackCreate(data) {
+      return data.keys().hasAll([
+          'userId', 'userName', 'category', 'message', 'status',
+          'adminResponse', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'userId', 'userName', 'category', 'message', 'status',
+          'adminResponse', 'createdAt'
+        ]) &&
+        data.userId is string && data.userId.size() > 0 &&
+        data.userName is string && data.userName.size() <= 200 &&
+        data.category in ['Bug', 'Feature', 'Question'] &&
+        data.message is string && data.message.size() > 0 &&
+        data.message.size() <= 4000 &&
+        data.status == 'Pending' && data.adminResponse == '' &&
+        data.createdAt == request.time;
+    }
+
+    function validProduct(data) {
+      return
+        // The app uses total_stock; quantity is accepted for legacy records.
+        (('total_stock' in data) || ('quantity' in data)) &&
+        (!('total_stock' in data) ||
+          (data.total_stock is number && data.total_stock >= 0)) &&
+        (!('quantity' in data) ||
+          (data.quantity is number && data.quantity >= 0)) &&
+        ('selling_price' in data) &&
+        (data.selling_price is number && data.selling_price > 0) &&
+        // The current model uses default_purchase_price; accept the older
+        // purchase_price field while validating every field that is present.
+        (('default_purchase_price' in data) || ('purchase_price' in data)) &&
+        (!('default_purchase_price' in data) ||
+          (data.default_purchase_price is number &&
+            data.default_purchase_price > 0)) &&
+        (!('purchase_price' in data) ||
+          (data.purchase_price is number && data.purchase_price > 0));
+    }
+
+    function invoiceItemValid(items, index) {
+      return items.size() <= index ||
+        (items[index] is map &&
+          items[index].keys().hasAll(['quantity', 'unit_price', 'total_price']) &&
+          items[index].quantity is number && items[index].quantity > 0 &&
+          items[index].unit_price is number && items[index].unit_price > 0 &&
+          items[index].total_price is number && items[index].total_price >= 0 &&
+          math.abs(items[index].total_price -
+            (items[index].quantity * items[index].unit_price)) < 0.01);
+    }
+
+    function invoiceItemTotal(items, index) {
+      return items.size() > index ? items[index].total_price : 0;
+    }
+
+    // Security Rules have no general list-reduction/loop operation. To check
+    // every embedded line item and calculate its total here, invoices are
+    // limited to 20 items. Larger carts should be written by a trusted server
+    // function, with direct client invoice writes denied.
+    function validInvoice(data) {
+      let items = data.items;
+      return data.keys().hasAll([
+          'items', 'total_amount', 'discount', 'paid_amount'
+        ]) &&
+        items is list && items.size() > 0 && items.size() <= 20 &&
+        data.total_amount is number && data.total_amount >= 0 &&
+        data.discount is number && data.discount >= 0 &&
+        data.paid_amount is number && data.paid_amount >= 0 &&
+        data.paid_amount <= data.total_amount &&
+        invoiceItemValid(items, 0) && invoiceItemValid(items, 1) &&
+        invoiceItemValid(items, 2) && invoiceItemValid(items, 3) &&
+        invoiceItemValid(items, 4) && invoiceItemValid(items, 5) &&
+        invoiceItemValid(items, 6) && invoiceItemValid(items, 7) &&
+        invoiceItemValid(items, 8) && invoiceItemValid(items, 9) &&
+        invoiceItemValid(items, 10) && invoiceItemValid(items, 11) &&
+        invoiceItemValid(items, 12) && invoiceItemValid(items, 13) &&
+        invoiceItemValid(items, 14) && invoiceItemValid(items, 15) &&
+        invoiceItemValid(items, 16) && invoiceItemValid(items, 17) &&
+        invoiceItemValid(items, 18) && invoiceItemValid(items, 19) &&
+        math.abs(
+          invoiceItemTotal(items, 0) + invoiceItemTotal(items, 1) +
+          invoiceItemTotal(items, 2) + invoiceItemTotal(items, 3) +
+          invoiceItemTotal(items, 4) + invoiceItemTotal(items, 5) +
+          invoiceItemTotal(items, 6) + invoiceItemTotal(items, 7) +
+          invoiceItemTotal(items, 8) + invoiceItemTotal(items, 9) +
+          invoiceItemTotal(items, 10) + invoiceItemTotal(items, 11) +
+          invoiceItemTotal(items, 12) + invoiceItemTotal(items, 13) +
+          invoiceItemTotal(items, 14) + invoiceItemTotal(items, 15) +
+          invoiceItemTotal(items, 16) + invoiceItemTotal(items, 17) +
+          invoiceItemTotal(items, 18) + invoiceItemTotal(items, 19) -
+          (data.total_amount + data.discount)
+        ) < 0.01;
+    }
+
+    // A user can only access their own profile document.
+    match /users/{userId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == userId;
+    }
+
+    match /feedback/{feedbackId} {
+      allow get, list: if isAdmin() ||
+        (request.auth != null && resource.data.userId == request.auth.uid);
+
+      allow create: if validFeedbackCreate(request.resource.data) &&
+        (isAdmin() ||
+          (request.auth != null &&
+            request.resource.data.userId == request.auth.uid));
+
+      // Admins may reply and change workflow status, while the original user
+      // message and identity stay immutable.
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['adminResponse', 'status']) &&
+        request.resource.data.status in ['Pending', 'Resolved'] &&
+        request.resource.data.adminResponse is string &&
+        request.resource.data.adminResponse.size() <= 2000;
+
+      // A user may delete their own feedback as part of account/data deletion.
+      allow delete: if isAdmin() ||
+        (request.auth != null && resource.data.userId == request.auth.uid);
+    }
+
+    match /shops/{shopId} {
+      allow read, write: if isShopOwner(shopId);
+
+      match /products/{productId} {
+        allow read: if isShopOwner(shopId);
+        allow create, update: if isShopOwner(shopId) &&
+          validProduct(request.resource.data);
+        allow delete: if isShopOwner(shopId);
+      }
+
+      match /batches/{batchId} {
+        allow read: if isShopOwner(shopId);
+        allow create, update: if isShopOwner(shopId) &&
+          request.resource.data.quantity is number &&
+          request.resource.data.quantity >= 0;
+        allow delete: if isShopOwner(shopId);
+      }
+
+      match /invoices/{invoiceId} {
+        allow read: if isShopOwner(shopId);
+        allow create, update: if isShopOwner(shopId) &&
+          validInvoice(request.resource.data);
+        allow delete: if isShopOwner(shopId);
+      }
+
+      match /customers/{customerId} {
+        allow read: if isShopOwner(shopId);
+        allow create, update: if isShopOwner(shopId) &&
+          request.resource.data.total_due is number &&
+          request.resource.data.total_due >= 0;
+        allow delete: if isShopOwner(shopId);
+      }
+
+      match /categories/{categoryId} {
+        allow read, write: if isShopOwner(shopId);
+      }
+
+      // Other nested records are readable by the shop owner, but any new
+      // writable collection must receive its own explicit rule above.
       match /{document=**} {
-        allow read, write: if request.auth != null
-                            && request.auth.uid == shopId;
+        allow read: if isShopOwner(shopId);
       }
     }
   }

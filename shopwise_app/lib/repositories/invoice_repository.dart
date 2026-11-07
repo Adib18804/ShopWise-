@@ -28,7 +28,7 @@ class InvoiceRepository {
         .orderBy('created_at', descending: true)
         .snapshots()
         .map((snap) =>
-            snap.docs.map((d) => SaleModel.fromFirestore(d, shopIntId)).toList());
+            snap.docs.map((d) => SaleModel.fromFirestore(d, shopIntId)).toList(),);
   }
 
   /// Paged one-time fetch (for initial load or pull-to-refresh).

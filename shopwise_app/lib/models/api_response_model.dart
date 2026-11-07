@@ -1,9 +1,5 @@
 /// Generic API response model
 class ApiResponse<T> {
-  final bool success;
-  final String message;
-  final T? data;
-  final List<ApiError>? errors;
 
   ApiResponse({
     required this.success,
@@ -15,8 +11,7 @@ class ApiResponse<T> {
   factory ApiResponse.fromJson(
     Map<String, dynamic> json,
     T Function(Map<String, dynamic>)? fromJsonT,
-  ) {
-    return ApiResponse<T>(
+  ) => ApiResponse<T>(
       success: json['success'] as bool,
       message: json['message'] as String,
       data: json['data'] != null && fromJsonT != null
@@ -28,23 +23,24 @@ class ApiResponse<T> {
               .toList()
           : null,
     );
-  }
+  final bool success;
+  final String message;
+  final T? data;
+  final List<ApiError>? errors;
 }
 
 /// API error model
 class ApiError {
-  final String field;
-  final String message;
 
   ApiError({
     required this.field,
     required this.message,
   });
 
-  factory ApiError.fromJson(Map<String, dynamic> json) {
-    return ApiError(
+  factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
       field: json['field'] as String? ?? '',
       message: json['message'] as String,
     );
-  }
+  final String field;
+  final String message;
 }

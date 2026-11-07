@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/shop_provider.dart';
-import '../../../providers/auth_provider.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../../../features/auth/widgets/auth_text_field.dart';
 import '../../../features/auth/widgets/auth_button.dart';
+import '../../../features/auth/widgets/auth_text_field.dart';
+import '../../../models/shop_model.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/language_provider.dart';
+import '../../../providers/shop_provider.dart';
 import '../../../widgets/layout/main_shell.dart';
 
 /// Shop setup screen
@@ -21,6 +24,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
   String _selectedCurrency = 'BDT';
+  ShopType _selectedShopType = ShopType.general;
 
   @override
   void dispose() {
@@ -40,6 +44,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
           address: _addressController.text.trim(),
           phone: _phoneController.text.trim(),
           currency: _selectedCurrency,
+          shopType: _selectedShopType,
         );
 
     if (!mounted) return;
@@ -79,6 +84,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final shopState = ref.watch(shopProvider);
+    final isBn = ref.watch(appLocalizationsProvider).isBn;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -90,7 +96,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(
@@ -115,12 +121,28 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                 ),
                 const SizedBox(height: 32),
 
+                Text(
+                  isBn ? 'আপনার ব্যবসার ধরন নির্বাচন করুন *' : 'Select your business type *',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 10),
+                ...ShopType.values.map((type) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _ShopTypeOption(
+                        type: type,
+                        selected: _selectedShopType == type,
+                        enabled: !shopState.isLoading,
+                        isBn: isBn,
+                        onTap: () => setState(() => _selectedShopType = type),
+                      ),
+                    ),),
+                const SizedBox(height: 20),
+
                 // Shop name field
                 AuthTextField(
                   controller: _shopNameController,
                   label: 'দোকানের নাম *',
                   hint: 'যেমন: রহিম স্টোর',
-                  keyboardType: TextInputType.text,
                   prefixIcon: const Icon(Icons.store),
                   enabled: !shopState.isLoading,
                   validator: (value) {
@@ -219,7 +241,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                                 children: [
                                   Icon(Icons.attach_money),
                                   SizedBox(width: 12),
-                                  Text('USD (\$) - US Dollar'),
+                                  Text(r'USD ($) - US Dollar'),
                                 ],
                               ),
                             ),
@@ -254,7 +276,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Row(
@@ -290,5 +312,74 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
         ),
       ),
     );
+  }
+}
+
+class _ShopTypeOption extends StatelessWidget {
+
+  const _ShopTypeOption({
+    required this.type,
+    required this.selected,
+    required this.enabled,
+    required this.isBn,
+    required this.onTap,
+  });
+  final ShopType type;
+  final bool selected;
+  final bool enabled;
+  final bool isBn;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (bn, en, icon, detailBn, detailEn) = switch (type) {
+      ShopType.general => ('জেনারেল স্টোর', 'General Store', Icons.storefront, 'মুদি ও দৈনন্দিন পণ্য', 'Groceries and daily essentials'),
+      ShopType.pharmacy => ('ফার্মেসি', 'Pharmacy', Icons.local_pharmacy, 'ওষুধ, ব্যাচ ও মেয়াদ ট্র্যাকিং', 'Medicine, batch and expiry tracking'),
+      ShopType.stationery => ('স্টেশনারি', 'Stationery', Icons.edit_note, 'খাতা, কলম ও অফিস সামগ্রী', 'Books, pens and office supplies'),
+      ShopType.library => ('লাইব্রেরি', 'Library', Icons.local_library, 'বই ইস্যু ও ফেরত ব্যবস্থাপনা', 'Book issue and return tracking'),
+    };
+
+    return Material(
+      color: selected ? AppColors.primary.withValues(alpha: 0.08) : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? AppColors.primary : Colors.grey.shade300,
+              width: selected ? 1.7 : 1,
+            ),
+          ),
+          child: Row(children: [
+            Icon(icon, color: AppColors.primary, size: 25),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(isBn ? bn : en, style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 3),
+                Text(isBn ? detailBn : detailEn,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),),
+              ],),
+            ),
+            Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: selected ? AppColors.primary : Colors.grey,),
+          ],),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<ShopType>('type', type));
+    properties.add(DiagnosticsProperty<bool>('selected', selected));
+    properties.add(DiagnosticsProperty<bool>('enabled', enabled));
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onTap', onTap));
   }
 }

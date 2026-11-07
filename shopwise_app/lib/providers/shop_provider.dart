@@ -1,14 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/network/api_exception.dart';
 import '../models/shop_model.dart';
 import '../services/shop_service.dart';
-import '../core/network/api_exception.dart';
 
 /// Shop state
 class ShopState {
-  final ShopModel? shop;
-  final bool isLoading;
-  final bool hasShop;
-  final String? error;
 
   ShopState({
     this.shop,
@@ -16,36 +13,35 @@ class ShopState {
     this.hasShop = false,
     this.error,
   });
+  final ShopModel? shop;
+  final bool isLoading;
+  final bool hasShop;
+  final String? error;
 
   ShopState copyWith({
     ShopModel? shop,
     bool? isLoading,
     bool? hasShop,
     String? error,
-  }) {
-    return ShopState(
+  }) => ShopState(
       shop: shop ?? this.shop,
       isLoading: isLoading ?? this.isLoading,
       hasShop: hasShop ?? this.hasShop,
       error: error,
     );
-  }
 
-  ShopState clearError() {
-    return ShopState(
+  ShopState clearError() => ShopState(
       shop: shop,
       isLoading: isLoading,
       hasShop: hasShop,
-      error: null,
     );
-  }
 }
 
 /// Shop state notifier
 class ShopNotifier extends StateNotifier<ShopState> {
-  final ShopService _shopService;
 
   ShopNotifier(this._shopService) : super(ShopState());
+  final ShopService _shopService;
 
   /// Initialize shop state (check if user has shop and load it)
   Future<void> initialize() async {
@@ -59,18 +55,14 @@ class ShopNotifier extends StateNotifier<ShopState> {
         state = ShopState(
           shop: shop,
           hasShop: true,
-          isLoading: false,
         );
       } else {
         state = ShopState(
-          hasShop: false,
-          isLoading: false,
+          
         );
       }
     } catch (e) {
       state = ShopState(
-        hasShop: false,
-        isLoading: false,
         error: e is ApiException ? e.message : 'Failed to load shop',
       );
     }
@@ -82,8 +74,9 @@ class ShopNotifier extends StateNotifier<ShopState> {
     required String address,
     required String phone,
     String currency = 'BDT',
+    ShopType shopType = ShopType.general,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
 
     try {
       final shop = await _shopService.createShop(
@@ -91,12 +84,12 @@ class ShopNotifier extends StateNotifier<ShopState> {
         address: address,
         phone: phone,
         currency: currency,
+        shopType: shopType,
       );
 
       state = ShopState(
         shop: shop,
         hasShop: true,
-        isLoading: false,
       );
 
       return true;
@@ -118,7 +111,6 @@ class ShopNotifier extends StateNotifier<ShopState> {
       state = ShopState(
         shop: shop,
         hasShop: true,
-        isLoading: false,
       );
     } catch (e) {
       state = state.copyWith(
@@ -134,13 +126,14 @@ class ShopNotifier extends StateNotifier<ShopState> {
     String? address,
     String? phone,
     String? currency,
+    ShopType? shopType,
   }) async {
     if (state.shop == null) {
       state = state.copyWith(error: 'No shop found');
       return false;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
 
     try {
       final updatedShop = await _shopService.updateShop(
@@ -148,12 +141,12 @@ class ShopNotifier extends StateNotifier<ShopState> {
         address: address,
         phone: phone,
         currency: currency,
+        shopType: shopType,
       );
 
       state = ShopState(
         shop: updatedShop,
         hasShop: true,
-        isLoading: false,
       );
 
       return true;
@@ -173,14 +166,13 @@ class ShopNotifier extends StateNotifier<ShopState> {
       return false;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
 
     try {
       await _shopService.deleteShop();
 
       state = ShopState(
-        hasShop: false,
-        isLoading: false,
+        
       );
 
       return true;
@@ -200,12 +192,15 @@ class ShopNotifier extends StateNotifier<ShopState> {
 }
 
 /// Shop service provider
-final shopServiceProvider = Provider<ShopService>((ref) {
-  return ShopService();
-});
+final shopServiceProvider = Provider<ShopService>((ref) => ShopService());
 
 /// Shop state provider
 final shopProvider = StateNotifierProvider<ShopNotifier, ShopState>((ref) {
   final shopService = ref.watch(shopServiceProvider);
   return ShopNotifier(shopService);
 });
+
+/// Current business type used to activate shop-specific UI and rules.
+/// Missing shop data defaults to general for compatibility with existing
+/// accounts and while the shop record is loading.
+final shopTypeProvider = Provider<ShopType>((ref) => ref.watch(shopProvider).shop?.shopType ?? ShopType.general);

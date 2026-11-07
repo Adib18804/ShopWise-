@@ -73,11 +73,8 @@ class BatchService {
   /// the product list and Smart Assistant insights stay in sync.
   Future<BatchModel> addBatch({
     required int productId,
-    String? batchNumber,
-    required DateTime purchaseDate,
+    required DateTime purchaseDate, required double quantity, required double purchasePrice, String? batchNumber,
     DateTime? expiryDate,
-    required double quantity,
-    required double purchasePrice,
   }) async {
     try {
       final productDocId = await _resolveProductDocId(productId);
@@ -151,7 +148,7 @@ class BatchService {
 
   /// Applies a map of legacy-keyed changes (e.g. `{'quantity': 5.0}`) to a batch.
   Future<BatchModel> updateBatch(
-      int batchId, Map<String, dynamic> changes) async {
+      int batchId, Map<String, dynamic> changes,) async {
     try {
       final uid = _uid;
       final docId = await _resolveBatchDocId(batchId);
@@ -217,9 +214,7 @@ class BatchService {
 
   /// Stock history. The prototype has no separate transactions collection so an
   /// empty list is returned — the screen shows "no history yet" gracefully.
-  Future<Map<String, dynamic>> getStockHistory(int productId) async {
-    return {'transactions': <Map<String, dynamic>>[]};
-  }
+  Future<Map<String, dynamic>> getStockHistory(int productId) async => {'transactions': <Map<String, dynamic>>[]};
 
   /// FEFO recommendation: active batches with remaining stock, sorted
   /// earliest-expiry first, no-expiry batches last.
@@ -351,7 +346,7 @@ class BatchService {
   ApiException _mapError(Object error) {
     if (error is FirebaseException) {
       return ApiException(
-          message: error.message ?? 'স্টক তথ্য লোড করা যায়নি');
+          message: error.message ?? 'স্টক তথ্য লোড করা যায়নি',);
     }
     return ApiException(message: 'স্টক তথ্য লোড করা যায়নি');
   }

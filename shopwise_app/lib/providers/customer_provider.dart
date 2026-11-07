@@ -7,11 +7,6 @@ import '../models/customer_model.dart';
 import '../repositories/customer_repository.dart';
 
 class CustomerState {
-  final List<CustomerModel> customers;
-  final bool isLoading;
-  final bool isSubmitting;
-  final String? error;
-  final String? successMessage;
 
   const CustomerState({
     this.customers = const [],
@@ -20,6 +15,11 @@ class CustomerState {
     this.error,
     this.successMessage,
   });
+  final List<CustomerModel> customers;
+  final bool isLoading;
+  final bool isSubmitting;
+  final String? error;
+  final String? successMessage;
 
   CustomerState copyWith({
     List<CustomerModel>? customers,
@@ -49,7 +49,7 @@ class CustomerNotifier extends StateNotifier<CustomerState> {
   /// Subscribes to the real-time customers stream. Idempotent.
   void init() {
     if (_sub != null) return;
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
     _sub = _repo.customersStream().listen(
       (customers) {
         state = CustomerState(customers: customers);
@@ -79,7 +79,7 @@ class CustomerNotifier extends StateNotifier<CustomerState> {
     required String name,
     required String phone,
   }) async {
-    state = state.copyWith(isSubmitting: true, error: null);
+    state = state.copyWith(isSubmitting: true);
     try {
       final customer = await _repo.create(name: name, phone: phone);
       state = state.copyWith(
@@ -101,7 +101,7 @@ class CustomerNotifier extends StateNotifier<CustomerState> {
     String? name,
     String? phone,
   }) async {
-    state = state.copyWith(isSubmitting: true, error: null);
+    state = state.copyWith(isSubmitting: true);
     try {
       await _repo.update(docId, name: name, phone: phone);
       state = state.copyWith(isSubmitting: false);
@@ -116,7 +116,7 @@ class CustomerNotifier extends StateNotifier<CustomerState> {
   }
 
   Future<bool> deleteCustomer(String docId) async {
-    state = state.copyWith(isSubmitting: true, error: null);
+    state = state.copyWith(isSubmitting: true);
     try {
       await _repo.delete(docId);
       state = state.copyWith(isSubmitting: false);
@@ -136,7 +136,7 @@ class CustomerNotifier extends StateNotifier<CustomerState> {
 
   /// Records a payment from the customer. Returns the updated model on success.
   Future<CustomerModel?> recordPayment(String docId, double amount) async {
-    state = state.copyWith(isSubmitting: true, error: null);
+    state = state.copyWith(isSubmitting: true);
     try {
       final updated = await _repo.recordPayment(docId, amount);
       state = state.copyWith(
@@ -168,6 +168,4 @@ final customerRepositoryProvider = Provider<CustomerRepository>(
 );
 
 final customerProvider =
-    StateNotifierProvider<CustomerNotifier, CustomerState>((ref) {
-  return CustomerNotifier(ref.watch(customerRepositoryProvider));
-});
+    StateNotifierProvider<CustomerNotifier, CustomerState>((ref) => CustomerNotifier(ref.watch(customerRepositoryProvider)));

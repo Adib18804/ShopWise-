@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../models/customer_model.dart';
+import '../../../models/shop_model.dart';
 import '../../../providers/customer_provider.dart';
 import '../../../providers/language_provider.dart';
+import '../../../providers/shop_provider.dart';
 
 /// Baki Khata — shows every customer with their outstanding balance.
 /// FAB opens the "New Customer" form; tapping a card opens "Record Payment".
@@ -27,11 +30,14 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   Widget build(BuildContext context) {
     final l = ref.watch(appLocalizationsProvider);
     final state = ref.watch(customerProvider);
+    final isLibrary = ref.watch(shopTypeProvider) == ShopType.library;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(l.isBn ? 'বাকি খাতা' : 'Customer Credit (Baki)'),
+        title: Text(isLibrary
+            ? (l.isBn ? 'সদস্য' : 'Members')
+            : (l.isBn ? 'বাকি খাতা' : 'Customer Credit (Baki)'),),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
@@ -41,20 +47,23 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
           ),
         ],
       ),
-      body: _body(context, l, state),
+      body: _body(context, l, state, isLibrary: isLibrary),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         icon: const Icon(Icons.person_add_rounded, color: Colors.white),
         label: Text(
-          l.isBn ? 'নতুন গ্রাহক' : 'New Customer',
+          isLibrary
+              ? (l.isBn ? 'নতুন সদস্য' : 'New Member')
+              : (l.isBn ? 'নতুন গ্রাহক' : 'New Customer'),
           style: const TextStyle(color: Colors.white),
         ),
-        onPressed: () => _showNewCustomerSheet(context, l),
+        onPressed: () => _showNewCustomerSheet(context, l, isLibrary: isLibrary),
       ),
     );
   }
 
-  Widget _body(BuildContext context, AppLocalizations l, CustomerState state) {
+  Widget _body(BuildContext context, AppLocalizations l, CustomerState state,
+      {required bool isLibrary,}) {
     if (state.isLoading && state.customers.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -83,7 +92,7 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
 
     // Summary banner — total outstanding across all customers
     final totalDue = state.customers.fold<double>(
-        0, (sum, c) => sum + c.totalDue);
+        0, (sum, c) => sum + c.totalDue,);
     final hasDue = totalDue > 0.005;
 
     return Column(
@@ -95,15 +104,15 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.riskMedium.withOpacity(0.85),
-                  AppColors.riskHigh.withOpacity(0.85),
+                  AppColors.riskMedium.withValues(alpha: 0.85),
+                  AppColors.riskHigh.withValues(alpha: 0.85),
                 ],
               ),
             ),
             child: Row(
               children: [
                 const Icon(Icons.account_balance_wallet_outlined,
-                    color: Colors.white),
+                    color: Colors.white,),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -127,12 +136,14 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.people_outline, size: 72,
-                          color: Colors.grey[400]),
+                          color: Colors.grey[400],),
                       const SizedBox(height: 16),
                       Text(
-                        l.isBn ? 'কোনো গ্রাহক নেই' : 'No customers yet',
+                        isLibrary
+                            ? (l.isBn ? 'কোনো সদস্য নেই' : 'No members yet')
+                            : (l.isBn ? 'কোনো গ্রাহক নেই' : 'No customers yet'),
                         style: const TextStyle(
-                            fontSize: 18, color: AppColors.textSecondary),
+                            fontSize: 18, color: AppColors.textSecondary,),
                       ),
                     ],
                   ),
@@ -146,11 +157,18 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final customer = state.customers[index];
+                      final shopName =
+                          ref.read(shopProvider).shop?.shopName ?? 'ShopWise';
                       return _CustomerCard(
                         customer: customer,
                         l: l,
                         onPayment: () =>
                             _showPaymentSheet(context, customer, l),
+                        onCall: () => _callCustomer(context, customer, l),
+                        onMessage: () => _messageCustomer(
+                            context, customer, l, shopName: shopName,),
+                        onContact: () => _showContactSheet(
+                            context, customer, l, shopName,),
                         onDelete: () =>
                             _confirmDelete(context, customer, l),
                       );
@@ -162,22 +180,134 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
     );
   }
 
+  Future<void> _callCustomer(
+    BuildContext context,
+    CustomerModel customer,
+    AppLocalizations l,
+  ) async {
+    if (customer.phone.trim().isEmpty) {
+      _showContactError(context, l.isBn ? 'ফোন নম্বর নেই' : 'No phone number');
+      return;
+    }
+    final launched = await launchUrl(
+      Uri(scheme: 'tel', path: customer.phone.trim()),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && context.mounted) {
+      _showContactError(
+          context, l.isBn ? 'কল অ্যাপ খোলা যায়নি' : 'Unable to open dialer',);
+    }
+  }
+
+  Future<void> _messageCustomer(
+    BuildContext context,
+    CustomerModel customer,
+    AppLocalizations l, {
+    required String shopName,
+  }) async {
+    if (customer.phone.trim().isEmpty) {
+      _showContactError(context, l.isBn ? 'ফোন নম্বর নেই' : 'No phone number');
+      return;
+    }
+    final message = l.isBn
+        ? 'আসসালামু আলাইকুম, আপনার $shopName-এ ${l.formatAmount(customer.totalDue)} টাকা বাকি আছে। অনুগ্রহ করে পরিশোধ করুন।'
+        : 'Assalamu Alaikum, you have ${l.formatAmount(customer.totalDue)} due at $shopName. Please make the payment.';
+    final launched = await launchUrl(
+      Uri(
+        scheme: 'sms',
+        path: customer.phone.trim(),
+        queryParameters: {'body': message},
+      ),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && context.mounted) {
+      _showContactError(context,
+          l.isBn ? 'মেসেজ অ্যাপ খোলা যায়নি' : 'Unable to open messaging app',);
+    }
+  }
+
+  void _showContactSheet(
+    BuildContext context,
+    CustomerModel customer,
+    AppLocalizations l,
+    String shopName,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(customer.name,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,),),
+            const SizedBox(height: 4),
+            Text(l.formatAmount(customer.totalDue),
+                style: const TextStyle(
+                    color: AppColors.riskHigh, fontWeight: FontWeight.w700,),),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    _callCustomer(context, customer, l);
+                  },
+                  icon: const Icon(Icons.call),
+                  label: Text(l.isBn ? 'কল' : 'Call'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    _messageCustomer(context, customer, l,
+                        shopName: shopName,);
+                  },
+                  icon: const Icon(Icons.sms_outlined),
+                  label: Text(l.isBn ? 'মেসেজ' : 'Message'),
+                  style:
+                      FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                ),
+              ),
+            ],),
+          ],),
+        ),
+      ),
+    );
+  }
+
+  void _showContactError(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   // ───────────────────────────────────────────────────── New customer sheet ──
 
-  void _showNewCustomerSheet(BuildContext context, AppLocalizations l) {
+  void _showNewCustomerSheet(BuildContext context, AppLocalizations l,
+      {required bool isLibrary,}) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black54,
-      builder: (_) => _NewCustomerSheet(l: l),
+      builder: (_) => _NewCustomerSheet(l: l, isLibrary: isLibrary),
     );
   }
 
   // ─────────────────────────────────────────────────── Record payment sheet ──
 
   void _showPaymentSheet(
-      BuildContext context, CustomerModel customer, AppLocalizations l) {
+      BuildContext context, CustomerModel customer, AppLocalizations l,) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -191,11 +321,14 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   // ──────────────────────────────────────────────────────── Delete confirm ──
 
   Future<void> _confirmDelete(
-      BuildContext context, CustomerModel customer, AppLocalizations l) async {
+      BuildContext context, CustomerModel customer, AppLocalizations l,) async {
+    final isLibrary = ref.read(shopTypeProvider) == ShopType.library;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        title: Text(l.isBn ? 'গ্রাহক মুছবেন?' : 'Delete customer?'),
+        title: Text(isLibrary
+            ? (l.isBn ? 'সদস্য মুছবেন?' : 'Delete member?')
+            : (l.isBn ? 'গ্রাহক মুছবেন?' : 'Delete customer?'),),
         content: Text(
           l.isBn
               ? '"${customer.name}" কে মুছে ফেলা হবে।'
@@ -214,7 +347,7 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
         ],
       ),
     );
-    if (ok == true && mounted) {
+    if ((ok ?? false) && mounted) {
       await ref.read(customerProvider.notifier).deleteCustomer(customer.docId);
     }
   }
@@ -223,17 +356,23 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CustomerCard extends StatelessWidget {
-  final CustomerModel customer;
-  final AppLocalizations l;
-  final VoidCallback onPayment;
-  final VoidCallback onDelete;
 
   const _CustomerCard({
     required this.customer,
     required this.l,
     required this.onPayment,
+    required this.onCall,
+    required this.onMessage,
+    required this.onContact,
     required this.onDelete,
   });
+  final CustomerModel customer;
+  final AppLocalizations l;
+  final VoidCallback onPayment;
+  final VoidCallback onCall;
+  final VoidCallback onMessage;
+  final VoidCallback onContact;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -243,118 +382,127 @@ class _CustomerCard extends StatelessWidget {
       shadowColor: Colors.black12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Column(
           children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: hasDue
-                  ? AppColors.riskMedium.withOpacity(0.12)
-                  : AppColors.primary.withOpacity(0.1),
-              child: Text(
-                customer.name.isNotEmpty
-                    ? customer.name[0].toUpperCase()
-                    : '?',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: hasDue ? AppColors.riskMedium : AppColors.primary,
+            Row(children: [
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: hasDue
+                    ? AppColors.riskMedium.withValues(alpha: 0.12)
+                    : AppColors.primary.withValues(alpha: 0.1),
+                child: Text(
+                  customer.name.isNotEmpty
+                      ? customer.name[0].toUpperCase()
+                      : '?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: hasDue ? AppColors.riskMedium : AppColors.primary,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    customer.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  if (customer.phone.isNotEmpty)
-                    Text(
-                      customer.phone,
-                      style: const TextStyle(
-                          fontSize: 13, color: AppColors.textSecondary),
-                    ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (hasDue) ...[
-                  Text(
-                    l.formatAmount(customer.totalDue),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: AppColors.riskMedium,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: onPayment,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        l.isBn ? 'পেমেন্ট' : 'Pay',
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(customer.name,
                         style: const TextStyle(
-                          color: AppColors.success,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: AppColors.textPrimary,),),
+                    if (customer.phone.isNotEmpty)
+                      Text(customer.phone,
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary,),),
+                  ],
+                ),
+              ),
+              if (hasDue)
+                InkWell(
+                  onTap: onContact,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text(l.formatAmount(customer.totalDue),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: AppColors.riskMedium,),),
                   ),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      l.isBn ? 'পরিষ্কার' : 'Clear',
-                      style: const TextStyle(
-                          color: AppColors.success, fontSize: 11),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: AppColors.error),
-              visualDensity: VisualDensity.compact,
-              onPressed: onDelete,
-            ),
+                )
+              else
+                Text(l.isBn ? 'পরিষ্কার' : 'Clear',
+                    style: const TextStyle(
+                        color: AppColors.success, fontSize: 12,),),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                visualDensity: VisualDensity.compact,
+                onPressed: onDelete,
+              ),
+            ],),
+            if (hasDue) ...[
+              const Divider(height: 14),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                IconButton.outlined(
+                  onPressed: onCall,
+                  tooltip: l.isBn ? 'কল করুন' : 'Call customer',
+                  icon: const Icon(Icons.call, size: 19),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
+                  onPressed: onMessage,
+                  tooltip: l.isBn ? 'মেসেজ পাঠান' : 'Message customer',
+                  icon: const Icon(Icons.sms_outlined, size: 19),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: onPayment,
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: Text(l.isBn ? 'পেমেন্ট' : 'Pay'),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.success),
+                ),
+              ],),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<CustomerModel>('customer', customer));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onPayment', onPayment));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onCall', onCall));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onMessage', onMessage));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onContact', onContact));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onDelete', onDelete));
   }
 }
 
 // ─────────────────────────────────────────────────────── New Customer Sheet ──
 
 class _NewCustomerSheet extends ConsumerStatefulWidget {
-  final AppLocalizations l;
 
-  const _NewCustomerSheet({required this.l});
+  const _NewCustomerSheet({required this.l, required this.isLibrary});
+  final AppLocalizations l;
+  final bool isLibrary;
 
   @override
   ConsumerState<_NewCustomerSheet> createState() => _NewCustomerSheetState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+    properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
+  }
 }
 
 class _NewCustomerSheetState extends ConsumerState<_NewCustomerSheet> {
@@ -386,7 +534,7 @@ class _NewCustomerSheetState extends ConsumerState<_NewCustomerSheet> {
 
     return Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+          bottom: MediaQuery.of(context).viewInsets.bottom,),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -411,7 +559,9 @@ class _NewCustomerSheetState extends ConsumerState<_NewCustomerSheet> {
                 ),
               ),
               Text(
-                l.isBn ? 'নতুন গ্রাহক যোগ করুন' : 'Add New Customer',
+                widget.isLibrary
+                    ? (l.isBn ? 'নতুন সদস্য যোগ করুন' : 'Add New Member')
+                    : (l.isBn ? 'নতুন গ্রাহক যোগ করুন' : 'Add New Customer'),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -458,14 +608,14 @@ class _NewCustomerSheetState extends ConsumerState<_NewCustomerSheet> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),),
                   ),
                   onPressed: state.isSubmitting ? null : _submit,
                   child: state.isSubmitting
                       ? const SizedBox.square(
                           dimension: 22,
                           child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2.5))
+                              color: Colors.white, strokeWidth: 2.5,),)
                       : Text(
                           l.isBn ? 'সংরক্ষণ করুন' : 'Save',
                           style: const TextStyle(fontSize: 16),
@@ -484,14 +634,21 @@ class _NewCustomerSheetState extends ConsumerState<_NewCustomerSheet> {
 // ─────────────────────────────────────────────────── Record Payment Sheet ──
 
 class _RecordPaymentSheet extends ConsumerStatefulWidget {
-  final CustomerModel customer;
-  final AppLocalizations l;
 
   const _RecordPaymentSheet({required this.customer, required this.l});
+  final CustomerModel customer;
+  final AppLocalizations l;
 
   @override
   ConsumerState<_RecordPaymentSheet> createState() =>
       _RecordPaymentSheetState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<CustomerModel>('customer', customer));
+    properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
+  }
 }
 
 class _RecordPaymentSheetState extends ConsumerState<_RecordPaymentSheet> {
@@ -528,7 +685,7 @@ class _RecordPaymentSheetState extends ConsumerState<_RecordPaymentSheet> {
 
     return Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+          bottom: MediaQuery.of(context).viewInsets.bottom,),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -564,7 +721,7 @@ class _RecordPaymentSheetState extends ConsumerState<_RecordPaymentSheet> {
               Text(
                 widget.customer.name,
                 style: const TextStyle(
-                    fontSize: 15, color: AppColors.textSecondary),
+                    fontSize: 15, color: AppColors.textSecondary,),
               ),
               const SizedBox(height: 4),
               Text(
@@ -584,7 +741,7 @@ class _RecordPaymentSheetState extends ConsumerState<_RecordPaymentSheet> {
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d*\.?\d{0,2}'))
+                      RegExp(r'^\d*\.?\d{0,2}'),),
                 ],
                 decoration: InputDecoration(
                   labelText:
@@ -617,14 +774,14 @@ class _RecordPaymentSheetState extends ConsumerState<_RecordPaymentSheet> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.success,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: BorderRadius.circular(14),),
                   ),
                   onPressed: state.isSubmitting ? null : _submit,
                   child: state.isSubmitting
                       ? const SizedBox.square(
                           dimension: 22,
                           child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2.5))
+                              color: Colors.white, strokeWidth: 2.5,),)
                       : Text(
                           l.isBn ? 'পেমেন্ট সংরক্ষণ করুন' : 'Save Payment',
                           style: const TextStyle(fontSize: 16),

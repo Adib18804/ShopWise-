@@ -1,68 +1,62 @@
 /// Custom exceptions for API errors
 class ApiException implements Exception {
-  final String message;
-  final int? statusCode;
-  final dynamic errorData;
 
   ApiException({
     required this.message,
     this.statusCode,
     this.errorData,
   });
+  final String message;
+  final int? statusCode;
+  final dynamic errorData;
 
   @override
-  String toString() {
-    return 'ApiException: $message (Status: $statusCode)';
-  }
+  String toString() => 'ApiException: $message (Status: $statusCode)';
 }
 
 class NetworkException extends ApiException {
-  NetworkException({String message = 'No internet connection'})
-      : super(message: message);
+  NetworkException({super.message = 'No internet connection'});
 }
 
 class TimeoutException extends ApiException {
-  TimeoutException({String message = 'Request timeout'})
-      : super(message: message);
+  TimeoutException({super.message = 'Request timeout'});
 }
 
 class UnauthorizedException extends ApiException {
-  UnauthorizedException({String message = 'Unauthorized'})
-      : super(message: message, statusCode: 401);
+  UnauthorizedException({super.message = 'Unauthorized'})
+      : super(statusCode: 401);
 }
 
 class NotFoundException extends ApiException {
-  NotFoundException({String message = 'Resource not found'})
-      : super(message: message, statusCode: 404);
+  NotFoundException({super.message = 'Resource not found'})
+      : super(statusCode: 404);
 }
 
 class ServerException extends ApiException {
-  ServerException({String message = 'Internal server error'})
-      : super(message: message, statusCode: 500);
+  ServerException({super.message = 'Internal server error'})
+      : super(statusCode: 500);
 }
 
 class ValidationException extends ApiException {
-  final List<ValidationError>? errors;
 
   ValidationException({
-    String message = 'Validation failed',
+    super.message = 'Validation failed',
     this.errors,
-  }) : super(message: message, statusCode: 422);
+  }) : super(statusCode: 422);
+  final List<ValidationError>? errors;
 }
 
 class ValidationError {
-  final String field;
-  final String message;
 
   ValidationError({
     required this.field,
     required this.message,
   });
 
-  factory ValidationError.fromJson(Map<String, dynamic> json) {
-    return ValidationError(
+  factory ValidationError.fromJson(Map<String, dynamic> json) => ValidationError(
       field: json['field'] as String? ?? '',
       message: json['message'] as String? ?? '',
     );
-  }
+  final String field;
+  final String message;
 }
