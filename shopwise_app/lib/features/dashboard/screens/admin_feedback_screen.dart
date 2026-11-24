@@ -155,7 +155,7 @@ class AdminFeedbackScreen extends ConsumerWidget {
   }
 
   void _showMessage(BuildContext context, String message,
-      {required bool isError}) {
+      {required bool isError,}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -388,6 +388,15 @@ class _FeedbackCard extends StatelessWidget {
             : value.trim();
     }
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<FeedbackModel>('item', item));
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onReply', onReply));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onResolve', onResolve));
+  }
 }
 
 class _StatusTag extends StatelessWidget {
@@ -464,6 +473,12 @@ class _EmptyFeedbackState extends StatelessWidget {
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+  }
 }
 
 class _AccessDeniedState extends StatelessWidget {
@@ -483,6 +498,12 @@ class _AccessDeniedState extends StatelessWidget {
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+  }
 }
 
 class _ErrorState extends StatelessWidget {
@@ -524,4 +545,12 @@ class _ErrorState extends StatelessWidget {
           ),
         ),
       );
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('message', message));
+    properties.add(DiagnosticsProperty<bool>('isBn', isBn));
+    properties.add(ObjectFlagProperty<VoidCallback>.has('onRetry', onRetry));
+  }
 }

@@ -240,7 +240,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final fallbackName = email.contains('@') ? email.split('@').first : '';
       transaction.set(profileRef, <String, dynamic>{
         'uid': firebaseUser.uid,
-        'name': firebaseUser.displayName?.trim().isNotEmpty == true
+        'name': firebaseUser.displayName?.trim().isNotEmpty ?? false
             ? firebaseUser.displayName!.trim()
             : fallbackName,
         'phone': firebaseUser.phoneNumber ?? '',

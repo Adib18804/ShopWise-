@@ -12,6 +12,7 @@ import '../../features/dashboard/screens/admin_feedback_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/dashboard/screens/feedback_screen.dart';
 import '../../features/products/screens/products_screen.dart';
+import '../../features/profile/screens/profile_screen.dart';
 import '../../features/reports/screens/report_screen.dart';
 import '../../features/sales/screens/create_sale_screen.dart';
 import '../../features/sales/screens/sale_history_screen.dart';
@@ -86,7 +87,7 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
               begin: const Offset(0, 1),
               end: Offset.zero,
             ).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),),
             child: child,
           ),
         ),
@@ -113,7 +114,6 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
     final currentSlot = ref.watch(_shellIndexProvider);
     return DefaultTextStyle(
       style: DefaultTextStyle.of(context).style,
-      softWrap: true,
       overflow: TextOverflow.ellipsis,
       child: Scaffold(
         backgroundColor: AppColors.background,
@@ -531,7 +531,7 @@ class _ShopWiseFAB extends StatelessWidget {
             child:
                 Icon(Icons.add_rounded, color: Colors.white, size: size * 0.54),
           );
-        }),
+        },),
       );
 
   @override
@@ -569,7 +569,7 @@ class _MoreSheet extends ConsumerWidget {
       top: false,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
-        child: Container(
+        child: DecoratedBox(
           decoration: const BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -593,6 +593,18 @@ class _MoreSheet extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
+                ),
+                _SheetTile(
+                  icon: Icons.account_circle_outlined,
+                  label: l.isBn ? 'প্রোফাইল' : 'Profile',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ProfileScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _SheetTile(
                   icon: Icons.receipt_long_rounded,
@@ -695,11 +707,11 @@ class _MoreSheet extends ConsumerWidget {
     properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
     properties.add(ObjectFlagProperty<VoidCallback>.has('onLogout', onLogout));
     properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onDeleteAccount', onDeleteAccount));
+        'onDeleteAccount', onDeleteAccount,),);
     properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onPrivacyPolicy', onPrivacyPolicy));
+        'onPrivacyPolicy', onPrivacyPolicy,),);
     properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onTermsConditions', onTermsConditions));
+        'onTermsConditions', onTermsConditions,),);
   }
 }
 

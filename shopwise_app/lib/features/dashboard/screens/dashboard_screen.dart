@@ -102,7 +102,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 : 16.0;
         return DefaultTextStyle(
           style: DefaultTextStyle.of(context).style,
-          softWrap: true,
           overflow: TextOverflow.ellipsis,
           child: Scaffold(
             backgroundColor: AppColors.background,
@@ -124,7 +123,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                   constraints: const BoxConstraints(maxWidth: 760),
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(
-                        horizontalPadding, 8, horizontalPadding, 32),
+                        horizontalPadding, 8, horizontalPadding, 32,),
                     children: [
                       // Error banner
                       if (insights.error != null) ...[
@@ -159,7 +158,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       _SectionHeader(l.quickActions),
                       const SizedBox(height: 12),
                       _QuickActionsRow(
-                          l: l, isLibrary: shopType == ShopType.library),
+                          l: l, isLibrary: shopType == ShopType.library,),
                       const SizedBox(height: 24),
 
                       // ── Attention needed — alert list ────────────────────────────
@@ -614,7 +613,7 @@ class _SmartSummaryCard extends StatelessWidget {
 
 class _AlertChip extends StatelessWidget {
   const _AlertChip(
-      {required this.label, required this.count, required this.loading});
+      {required this.label, required this.count, required this.loading,});
   final String label;
   final int count;
   final bool loading;
@@ -630,7 +629,7 @@ class _AlertChip extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(label,
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                style: const TextStyle(color: Colors.white70, fontSize: 12),),
             const SizedBox(width: 6),
             Text(
               loading ? '...' : count.toString().padLeft(2, '0'),
@@ -897,7 +896,7 @@ class _QuickActionsRow extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           final columns = constraints.maxWidth < 360 ? 2 : 3;
-          final spacing = 10.0;
+          const spacing = 10.0;
           final cardWidth =
               (constraints.maxWidth - spacing * (columns - 1)) / columns;
           final cards = <Widget>[
@@ -909,7 +908,7 @@ class _QuickActionsRow extends StatelessWidget {
               iconColor: AppColors.primary,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                    builder: (_) => const CreateSaleScreen()),
+                    builder: (_) => const CreateSaleScreen(),),
               ),
             ),
             _QuickCard(
@@ -924,7 +923,7 @@ class _QuickActionsRow extends StatelessWidget {
               iconColor: AppColors.success,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                    builder: (_) => const ProductFormScreen()),
+                    builder: (_) => const ProductFormScreen(),),
               ),
             ),
           ];
@@ -1143,7 +1142,7 @@ class _PendingDuesAlert extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
               border: Border.all(
-                  color: AppColors.riskMedium.withValues(alpha: 0.45)),
+                  color: AppColors.riskMedium.withValues(alpha: 0.45),),
               borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
             child: Row(
@@ -1507,7 +1506,7 @@ class _SmartRecommendationCard extends StatelessWidget {
                   color: AppColors.primary.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.2)),
+                      color: AppColors.primary.withValues(alpha: 0.2),),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1893,7 +1892,7 @@ class _AllRecommendationsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.82),
+            maxHeight: MediaQuery.of(context).size.height * 0.82,),
         decoration: const BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -2162,7 +2161,7 @@ class _AlertBottomSheet extends StatelessWidget {
                         color: item.color.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         border: Border.all(
-                            color: item.color.withValues(alpha: 0.18)),
+                            color: item.color.withValues(alpha: 0.18),),
                       ),
                       child: Row(
                         children: [

@@ -1,6 +1,14 @@
-# ShopWise
-
-**A smart, bilingual retail assistant for small businesses in Bangladesh.**
+<div align="center">
+  <img src="docs/assets/shopwise-logo.png" alt="ShopWise app logo: store mark, name, and Bengali tagline" width="200">
+  <h1>ShopWise</h1>
+  <p><strong>A smart, bilingual retail assistant for small businesses in Bangladesh.</strong></p>
+  <p>দোকানের স্টক, বিক্রি ও গুরুত্বপূর্ণ সিদ্ধান্ত সামলাতে আপনার ডিজিটাল সহকারী।</p>
+  <p>
+    <img alt="Flutter" src="https://img.shields.io/badge/Flutter-Mobile%20app-02569B?logo=flutter&logoColor=white">
+    <img alt="Firebase" src="https://img.shields.io/badge/Firebase-Auth%20%7C%20Firestore-FFCA28?logo=firebase&logoColor=black">
+    <img alt="Bangla and English" src="https://img.shields.io/badge/Language-Bangla%20%7C%20English-176369">
+  </p>
+</div>
 
 ShopWise helps a shopkeeper keep track of products, batches, sales, customers, and credit while surfacing useful stock and expiry insights. It is designed to assist the shopkeeper: recommendations explain the signals behind them, and the shopkeeper decides what action to take.
 
@@ -28,6 +36,7 @@ ShopWise helps a shopkeeper keep track of products, batches, sales, customers, a
 - Email/password registration and login through Firebase Authentication.
 - Shop setup is completed after registration and stores the selected business type.
 - Authentication state is restored at app startup; incomplete shop setup returns the user to onboarding.
+- Every signed-in user can open a profile showing their account and shop details; admin accounts are identified with an admin badge.
 - Shop and user profiles are stored in Firestore.
 
 ### Products, categories, and stock
@@ -79,9 +88,9 @@ The authenticated app uses a five-slot bottom navigation shell:
 2. **Stock** — product list, search, filters, and product details.
 3. **New sale / issue** — central action button opens the cart and checkout flow.
 4. **Insights** — daily report and sales trend.
-5. **More** — sale history, customers/members, and account actions.
+5. **More** — profile, sale history, customers/members, help, and account actions.
 
-Additional screens cover welcome, registration, login, shop setup, categories, product forms, batch management, FEFO suggestions, and stock history. The interface uses a Teal and Orange theme and supports Bengali and English labels in the app.
+Additional screens cover welcome, registration, login, shop setup, categories, product forms, batch management, FEFO suggestions, and stock history. The interface uses a Teal and Orange theme and supports Bengali and English labels in the app. The README uses the same teal storefront mark shown in the dashboard header.
 
 ## Architecture and data flow
 
