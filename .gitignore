@@ -1,0 +1,13 @@
+# Keep Android upload signing material out of the repository.
+*.jks
+*.keystore
+/upload-keystore.jks
+/shopwise_app/android/key.properties
+
+# Local build outputs and JVM crash dumps.
+/shopwise_app/build/
+/shopwise_app/android/build/
+/shopwise_app/.dart_tool/
+/shopwise_app/echo
+hs_err_pid*.log
+replay_pid*.log

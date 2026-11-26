@@ -20,27 +20,41 @@ class AccountDeletionService {
     'customers',
   ];
 
-  Future<void> deleteCurrentAccount({required String password}) async {
+  Future<void> deleteCurrentAccount({String? password}) async {
     final user = _auth.currentUser;
     if (user == null) {
       throw StateError('No signed-in account was found.');
     }
 
-    final email = user.email;
-    if (email == null || email.isEmpty) {
+    final providerIds =
+        user.providerData.map((provider) => provider.providerId);
+
+    // Require a fresh sign-in before touching any Firestore data. Google users
+    // don't have an app password, so reauthenticate with their linked provider.
+    if (providerIds.contains('google.com')) {
+      await user.reauthenticateWithProvider(GoogleAuthProvider());
+    } else if (providerIds.contains(EmailAuthProvider.PROVIDER_ID)) {
+      final email = user.email;
+      if (email == null ||
+          email.isEmpty ||
+          password == null ||
+          password.isEmpty) {
+        throw StateError(
+          'A valid email and current password are required to delete this account.',
+        );
+      }
+
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password,
+      );
+      await user.reauthenticateWithCredential(credential);
+    } else {
       throw StateError(
-        'This account cannot be reauthenticated with email and password. '
-        'Sign in again, then retry account deletion.',
+        'This sign-in method is not supported for account deletion. '
+        'Contact support for help.',
       );
     }
-
-    // Firebase requires a recent sign-in for deleting an account. Reauthenticate
-    // before removing any data, so a stale session cannot partially erase it.
-    final credential = EmailAuthProvider.credential(
-      email: email,
-      password: password,
-    );
-    await user.reauthenticateWithCredential(credential);
 
     final uid = user.uid;
     final shopRef = _firestore.collection('shops').doc(uid);

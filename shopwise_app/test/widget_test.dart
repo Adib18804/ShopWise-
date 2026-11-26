@@ -4,11 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shopwise_app/main.dart';
 import 'package:shopwise_app/models/user_model.dart';
 import 'package:shopwise_app/providers/auth_provider.dart';
+import 'package:shopwise_app/providers/customer_provider.dart';
+import 'package:shopwise_app/providers/insight_provider.dart';
+import 'package:shopwise_app/providers/internet_status_provider.dart';
 import 'package:shopwise_app/providers/reports_provider.dart';
 import 'package:shopwise_app/providers/shop_provider.dart';
+import 'package:shopwise_app/repositories/customer_repository.dart';
 import 'package:shopwise_app/repositories/reports_repository.dart';
 import 'package:shopwise_app/services/auth_service.dart';
 import 'package:shopwise_app/services/shop_service.dart';
+import 'package:shopwise_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:shopwise_app/widgets/layout/main_shell.dart';
 
 class _TestAuthNotifier extends AuthNotifier {
   _TestAuthNotifier(this.testState) : super(AuthService());
@@ -35,6 +41,20 @@ class _TestShopNotifier extends ShopNotifier {
   Future<void> initialize() async {}
 }
 
+class _TestCustomerNotifier extends CustomerNotifier {
+  _TestCustomerNotifier() : super(CustomerRepository());
+
+  @override
+  void init() {}
+}
+
+class _TestInsightsNotifier extends InsightsNotifier {
+  _TestInsightsNotifier(super.ref);
+
+  @override
+  Future<void> load() async {}
+}
+
 UserModel _testUser({required bool hasShop}) {
   final now = DateTime(2026);
   return UserModel(
@@ -45,19 +65,23 @@ UserModel _testUser({required bool hasShop}) {
     preferredLanguage: 'bn',
     hasShop: hasShop,
     shopId: hasShop ? 1 : null,
+    shopType: hasShop ? 'general' : null,
     createdAt: now,
     updatedAt: now,
   );
 }
 
 Widget _appWithAuthState(AuthState authState) => ProviderScope(
-    overrides: [
-      authProvider.overrideWith((ref) => _TestAuthNotifier(authState)),
-      shopProvider.overrideWith((ref) => _TestShopNotifier()),
-      reportsProvider.overrideWith((ref) => _TestReportsNotifier()),
-    ],
-    child: const ShopWiseApp(),
-  );
+      overrides: [
+        authProvider.overrideWith((ref) => _TestAuthNotifier(authState)),
+        shopProvider.overrideWith((ref) => _TestShopNotifier()),
+        reportsProvider.overrideWith((ref) => _TestReportsNotifier()),
+        customerProvider.overrideWith((ref) => _TestCustomerNotifier()),
+        insightsProvider.overrideWith((ref) => _TestInsightsNotifier(ref)),
+        internetStatusProvider.overrideWith((ref) => Stream<bool>.value(true)),
+      ],
+      child: const ShopWiseApp(),
+    );
 
 void main() {
   testWidgets('unauthenticated startup reaches the welcome screen', (
@@ -103,7 +127,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 
-    expect(find.text('ShopWise'), findsOneWidget);
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(ShopWiseShell), findsOneWidget);
+    expect(find.byType(DashboardScreen), findsOneWidget);
   });
 }

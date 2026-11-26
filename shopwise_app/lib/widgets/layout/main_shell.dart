@@ -19,6 +19,7 @@ import '../../features/sales/screens/sale_history_screen.dart';
 import '../../models/shop_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/feedback_provider.dart';
+import '../../providers/internet_status_provider.dart';
 import '../../providers/language_provider.dart';
 import '../../providers/shop_provider.dart';
 import '../../services/account_deletion_service.dart';
@@ -27,6 +28,8 @@ import '../../services/account_deletion_service.dart';
 final _shellIndexProvider = StateProvider<int>((ref) => 0);
 const privacyPolicyUrl = 'https://adib18804.github.io/ShopWise-/';
 const termsConditionsUrl = 'https://adib18804.github.io/ShopWise-/terms.html';
+const accountDeletionUrl =
+    'https://adib18804.github.io/ShopWise-/delete-account.html';
 
 /// Root navigation shell used after the user is authenticated and has a shop.
 ///
@@ -87,7 +90,8 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
               begin: const Offset(0, 1),
               end: Offset.zero,
             ).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),),
+              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+            ),
             child: child,
           ),
         ),
@@ -112,19 +116,31 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
   @override
   Widget build(BuildContext context) {
     final currentSlot = ref.watch(_shellIndexProvider);
+    final internetStatus = ref.watch(internetStatusProvider);
+    final isOffline = internetStatus.asData?.value == false;
+    final isBn = ref.watch(appLocalizationsProvider).isBn;
     return DefaultTextStyle(
       style: DefaultTextStyle.of(context).style,
       overflow: TextOverflow.ellipsis,
       child: Scaffold(
         backgroundColor: AppColors.background,
         // PageView so swipe between tabs works naturally.
-        body: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(), // nav-only switching
-          children: _pages,
-          onPageChanged: (page) {
-            ref.read(_shellIndexProvider.notifier).state = _pageToSlot[page];
-          },
+        body: Column(
+          children: [
+            if (isOffline) _OfflineNotice(isBn: isBn),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics:
+                    const NeverScrollableScrollPhysics(), // nav-only switching
+                children: _pages,
+                onPageChanged: (page) {
+                  ref.read(_shellIndexProvider.notifier).state =
+                      _pageToSlot[page];
+                },
+              ),
+            ),
+          ],
         ),
         bottomNavigationBar: _ShopWiseBottomBar(
           currentSlot: currentSlot,
@@ -152,6 +168,7 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
         isLibrary: isLibrary,
         onLogout: () => _logout(context, l),
         onDeleteAccount: () => _deleteAccount(context, l),
+        onAccountDeletionRequest: () => _openAccountDeletionRequest(context, l),
         onPrivacyPolicy: () => _openPrivacyPolicy(context, l),
         onTermsConditions: () => _openTermsConditions(context, l),
       ),
@@ -228,6 +245,28 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
     }
   }
 
+  Future<void> _openAccountDeletionRequest(
+    BuildContext context,
+    AppLocalizations l,
+  ) async {
+    final opened = await launchUrl(
+      Uri.parse(accountDeletionUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            l.isBn
+                ? 'অ্যাকাউন্ট মুছে ফেলার পৃষ্ঠা খোলা যায়নি।'
+                : 'Could not open the account deletion page.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteAccount(
     BuildContext context,
     AppLocalizations l,
@@ -244,8 +283,8 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
         title: Text(l.isBn ? 'অ্যাকাউন্ট মুছে ফেলবেন?' : 'Delete account?'),
         content: Text(
           l.isBn
-              ? 'এতে আপনার অ্যাকাউন্ট, দোকান, পণ্য, স্টক ব্যাচ, বিক্রয়, ক্যাটাগরি এবং গ্রাহক/সদস্যের তথ্য স্থায়ীভাবে মুছে যাবে। এই কাজটি আর ফিরিয়ে নেওয়া যাবে না।'
-              : 'This permanently deletes your account, shop, products, stock batches, sales, categories, and customer/member data. This action cannot be undone.',
+              ? 'এতে আপনার অ্যাকাউন্ট, দোকান, পণ্য, স্টক ব্যাচ, বিক্রয়, ক্যাটাগরি এবং গ্রাহক/সদস্যের তথ্য স্থায়ীভাবে মুছে যাবে। এই কাজটি আর ফিরিয়ে নেওয়া যাবে না। Google দিয়ে লগইন করলে পরিচয় আবার যাচাই করতে হবে।'
+              : 'This permanently deletes your account, shop, products, stock batches, sales, categories, and customer/member data. This cannot be undone. Google users will be asked to verify their sign-in again.',
         ),
         actions: [
           TextButton(
@@ -263,37 +302,44 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
     );
     if (confirmed != true || !context.mounted) return;
 
-    final passwordController = TextEditingController();
-    final password = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l.isBn ? 'পরিচয় নিশ্চিত করুন' : 'Confirm your identity'),
-        content: TextField(
-          controller: passwordController,
-          obscureText: true,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: l.isBn ? 'বর্তমান পাসওয়ার্ড' : 'Current password',
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final isGoogleUser = firebaseUser?.providerData
+            .any((provider) => provider.providerId == 'google.com') ??
+        false;
+    String? password;
+    if (!isGoogleUser) {
+      final passwordController = TextEditingController();
+      password = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(l.isBn ? 'পরিচয় নিশ্চিত করুন' : 'Confirm your identity'),
+          content: TextField(
+            controller: passwordController,
+            obscureText: true,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: l.isBn ? 'বর্তমান পাসওয়ার্ড' : 'Current password',
+            ),
+            onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
           ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l.isBn ? 'বাতিল' : 'Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(passwordController.text),
+              child: Text(l.isBn ? 'চালিয়ে যান' : 'Continue'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l.isBn ? 'বাতিল' : 'Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(passwordController.text),
-            child: Text(l.isBn ? 'চালিয়ে যান' : 'Continue'),
-          ),
-        ],
-      ),
-    );
-    passwordController.dispose();
-    if (password == null || password.isEmpty || !context.mounted) return;
+      );
+      passwordController.dispose();
+      if (password == null || password.isEmpty || !context.mounted) return;
+    }
 
     showDialog<void>(
       context: context,
@@ -330,6 +376,40 @@ class _ShopWiseShellState extends ConsumerState<ShopWiseShell>
       );
     }
   }
+}
+
+class _OfflineNotice extends StatelessWidget {
+  const _OfflineNotice({required this.isBn});
+
+  final bool isBn;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: AppColors.accent.withValues(alpha: 0.12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  color: AppColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isBn
+                      ? 'ইন্টারনেট নেই — ক্যাশে থাকা তথ্য দেখুন; বিক্রি সংরক্ষণে সংযোগ দরকার।'
+                      : 'You are offline. Cached data may be available; connect to save sales.',
+                  softWrap: true,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 // =============================================================================
@@ -512,26 +592,28 @@ class _ShopWiseFAB extends StatelessWidget {
           HapticFeedback.mediumImpact();
           onTap();
         },
-        child: Builder(builder: (context) {
-          final size = MediaQuery.sizeOf(context).width < 360 ? 48.0 : 56.0;
-          return Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.accent.withValues(alpha: 0.35),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child:
-                Icon(Icons.add_rounded, color: Colors.white, size: size * 0.54),
-          );
-        },),
+        child: Builder(
+          builder: (context) {
+            final size = MediaQuery.sizeOf(context).width < 360 ? 48.0 : 56.0;
+            return Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(Icons.add_rounded,
+                  color: Colors.white, size: size * 0.54),
+            );
+          },
+        ),
       );
 
   @override
@@ -551,6 +633,7 @@ class _MoreSheet extends ConsumerWidget {
     required this.isLibrary,
     required this.onLogout,
     required this.onDeleteAccount,
+    required this.onAccountDeletionRequest,
     required this.onPrivacyPolicy,
     required this.onTermsConditions,
   });
@@ -558,6 +641,7 @@ class _MoreSheet extends ConsumerWidget {
   final bool isLibrary;
   final VoidCallback onLogout;
   final VoidCallback onDeleteAccount;
+  final VoidCallback onAccountDeletionRequest;
   final VoidCallback onPrivacyPolicy;
   final VoidCallback onTermsConditions;
 
@@ -677,6 +761,16 @@ class _MoreSheet extends ConsumerWidget {
                   },
                 ),
                 _SheetTile(
+                  icon: Icons.person_remove_outlined,
+                  label: l.isBn
+                      ? 'ওয়েব থেকে অ্যাকাউন্ট মুছুন'
+                      : 'Request deletion on the web',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onAccountDeletionRequest();
+                  },
+                ),
+                _SheetTile(
                   icon: Icons.delete_forever_outlined,
                   label: l.isBn ? 'অ্যাকাউন্ট মুছুন' : 'Delete Account',
                   color: AppColors.error,
@@ -706,12 +800,30 @@ class _MoreSheet extends ConsumerWidget {
     properties.add(DiagnosticsProperty<AppLocalizations>('l', l));
     properties.add(DiagnosticsProperty<bool>('isLibrary', isLibrary));
     properties.add(ObjectFlagProperty<VoidCallback>.has('onLogout', onLogout));
-    properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onDeleteAccount', onDeleteAccount,),);
-    properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onPrivacyPolicy', onPrivacyPolicy,),);
-    properties.add(ObjectFlagProperty<VoidCallback>.has(
-        'onTermsConditions', onTermsConditions,),);
+    properties.add(
+      ObjectFlagProperty<VoidCallback>.has(
+        'onDeleteAccount',
+        onDeleteAccount,
+      ),
+    );
+    properties.add(
+      ObjectFlagProperty<VoidCallback>.has(
+        'onPrivacyPolicy',
+        onPrivacyPolicy,
+      ),
+    );
+    properties.add(
+      ObjectFlagProperty<VoidCallback>.has(
+        'onTermsConditions',
+        onTermsConditions,
+      ),
+    );
+    properties.add(
+      ObjectFlagProperty<VoidCallback>.has(
+        'onAccountDeletionRequest',
+        onAccountDeletionRequest,
+      ),
+    );
   }
 }
 
